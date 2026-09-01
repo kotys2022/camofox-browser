@@ -1,0 +1,54 @@
+# Test image: full deps (incl. dev / jest) + the real Camoufox binary, so the
+# server-spawning unit suites that need a browser build actually run (they are
+# skipped/failing on a host without `npm run fetch-bin`). Mirrors Dockerfile.ci's
+# system libs + binary, but keeps devDependencies and copies tests/.
+#
+#   docker build -f Dockerfile.test -t camofox-browser:test .
+#   docker run --rm --shm-size=2g camofox-browser:test            # tests/unit
+#   docker run --rm --shm-size=2g camofox-browser:test <jest args>
+FROM node:22-trixie-slim
+
+ARG CAMOUFOX_VERSION=135.0.1
+ARG CAMOUFOX_RELEASE=beta.24
+
+RUN apt-get update && apt-get install -y \
+    libgtk-3-0 libdbus-glib-1-2 libxt6 libasound2 libx11-xcb1 libxcomposite1 \
+    libxcursor1 libxdamage1 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 \
+    libxtst6 libegl1 libgl1-mesa-dri libgbm1 xvfb fonts-liberation \
+    fonts-noto-color-emoji fontconfig ca-certificates curl unzip \
+    build-essential python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /root/.cache/camoufox \
+    && curl -fSL "https://github.com/daijro/camoufox/releases/download/v${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}/camoufox-${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}-lin.x86_64.zip" -o /tmp/camoufox.zip \
+    && (unzip -q /tmp/camoufox.zip -d /root/.cache/camoufox || true) \
+    && rm /tmp/camoufox.zip \
+    && chmod -R 755 /root/.cache/camoufox \
+    && echo "{\"version\":\"${CAMOUFOX_VERSION}\",\"release\":\"${CAMOUFOX_RELEASE}\"}" > /root/.cache/camoufox/version.json \
+    && test -f /root/.cache/camoufox/camoufox-bin
+
+WORKDIR /app
+
+# Full install (incl. dev deps like jest); builds better-sqlite3 from source.
+# scripts/ must be present before npm ci -- the postinstall lifecycle runs
+# node scripts/postinstall.js (binary already downloaded above, so it no-ops).
+COPY package.json package-lock.json ./
+COPY scripts/ ./scripts/
+RUN npm ci
+
+# App + tests (selective COPY -- no host node_modules, which would shadow the
+# container's freshly-built native modules).
+COPY server.js camofox.config.json openapi.json openclaw.plugin.json jest.config.cjs jest.config.e2e.cjs ./
+COPY lib/ ./lib/
+COPY mcp/ ./mcp/
+COPY plugins/ ./plugins/
+COPY scripts/ ./scripts/
+COPY workers/ ./workers/
+COPY .github/ ./.github/
+COPY tests/ ./tests/
+
+ENV NODE_ENV=test
+ENV NODE_OPTIONS=--experimental-vm-modules
+# Default: the unit suite under a virtual display (some tests launch a real browser).
+ENTRYPOINT ["xvfb-run", "-a", "npx", "jest", "--runInBand", "--forceExit"]
+CMD ["tests/unit"]

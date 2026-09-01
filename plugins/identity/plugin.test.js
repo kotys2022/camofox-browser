@@ -45,14 +45,23 @@ describe('identity plugin', () => {
     const a = makeLaunchArgs();
     await events.emitAsync('browser:launchOptions', { launchArgs: a });
 
-    // File written and injected on first launch.
+    // File written on first launch: full portable superset of seeds.
     const saved = JSON.parse(await fs.readFile(file, 'utf-8'));
     expect(saved.fingerprint).toBeTruthy();
     expect(saved.config['audio:seed']).toBeGreaterThan(0);
-    expect(a.fingerprint).toEqual(saved.fingerprint);
-    expect(a.config['canvas:seed']).toBe(saved.config['canvas:seed']);
+    expect(saved.config['canvas:seed']).toBeGreaterThan(0);
 
-    // Second (relaunch) reads the same file -> identical identity.
+    // Injected fingerprint matches; injected config is the (possibly schema-
+    // filtered) subset of the persisted config -- every injected key/value must
+    // come from the saved superset. (A real build filters out audio:seed/
+    // canvas:seed; a host without the binary injects the whole set.)
+    expect(a.fingerprint).toEqual(saved.fingerprint);
+    expect(Object.keys(a.config).length).toBeGreaterThan(0);
+    for (const [k, v] of Object.entries(a.config)) {
+      expect(saved.config[k]).toBe(v);
+    }
+
+    // Second (relaunch) reads the same file -> identical injected identity.
     const b = makeLaunchArgs();
     await events.emitAsync('browser:launchOptions', { launchArgs: b });
     expect(b.fingerprint).toEqual(a.fingerprint);
@@ -145,10 +154,15 @@ describe('identity plugin', () => {
     const file = path.join(tmpDir, 'identity.json');
     await register(mockApp, ctx, { fingerprintFile: file });
 
+    // Mirror the full launch contract: the pre-hook injects fingerprint/webgl,
+    // then launchOptions() resolves (and re-randomizes canvas:aaOffset), then the
+    // post-hook pins canvas:aaOffset back. Only after both hooks is the serialized
+    // CAMOU_CONFIG expected to be identical across launches.
     const collect = async () => {
       const args = makeLaunchArgs();
       await events.emitAsync('browser:launchOptions', { launchArgs: args });
       const opts = await launchOptions(args);
+      await events.emitAsync('browser:launching', { options: opts });
       return Object.fromEntries(
         Object.entries(opts.env).filter(([k]) => k.startsWith('CAMOU_CONFIG_')),
       );

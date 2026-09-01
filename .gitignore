@@ -1,0 +1,24 @@
+# Node (camofox-browser — Node v22)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+dist/
+build/
+.cache/
+
+# Secrets / runtime
+.env
+.env.*
+*.key
+*.pem
+identity.json
+storage-state.json
+
+# Camofox runtime artefacts
+traces/
+*.trace.zip
+.camofox/
+
+# OS / editor
+.DS_Store
+*.swp

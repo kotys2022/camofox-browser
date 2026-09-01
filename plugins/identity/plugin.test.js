@@ -87,6 +87,39 @@ describe('identity plugin', () => {
     expect(saved.config['canvas:seed']).toBeGreaterThan(0);
   });
 
+  test('pins canvas:aaOffset in CAMOU_CONFIG env chunks on browser:launching', async () => {
+    const binDir = path.join(tmpDir, 'bin');
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(path.join(binDir, 'properties.json'), JSON.stringify([
+      { property: 'canvas:aaOffset', type: 'int' },
+      { property: 'canvas:aaCapOffset', type: 'bool' },
+      { property: 'fonts:spacing_seed', type: 'uint' },
+      { property: 'window.history.length', type: 'uint' },
+    ]));
+    const file = path.join(tmpDir, 'identity.json');
+    await register(mockApp, ctx, { fingerprintFile: file });
+
+    // Resolve/generate identity for this launch.
+    const a = makeLaunchArgs();
+    a.executable_path = path.join(binDir, 'camoufox');
+    await events.emitAsync('browser:launchOptions', { launchArgs: a });
+    const persisted = JSON.parse(await fs.readFile(file, 'utf-8')).config['canvas:aaOffset'];
+
+    // Simulate camoufox's resolved env with a *different* random aaOffset.
+    const options = { env: { CAMOU_CONFIG_1: JSON.stringify({ 'canvas:aaOffset': 999, other: 1 }) } };
+    await events.emitAsync('browser:launching', { options });
+
+    const rebuilt = JSON.parse(
+      Object.keys(options.env)
+        .filter((k) => /^CAMOU_CONFIG_\d+$/.test(k))
+        .sort((x, y) => Number(x.slice(13)) - Number(y.slice(13)))
+        .map((k) => options.env[k])
+        .join(''),
+    );
+    expect(rebuilt['canvas:aaOffset']).toBe(persisted); // pinned to persisted value
+    expect(rebuilt.other).toBe(1); // unrelated keys preserved
+  });
+
   test('does not clobber a fingerprint already set by another plugin', async () => {
     await register(mockApp, ctx, { fingerprintFile: path.join(tmpDir, 'identity.json') });
     const a = makeLaunchArgs();

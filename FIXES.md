@@ -53,8 +53,11 @@ NEGATIVE (без плагіна) — WebGL дрейфує NVIDIA→AMD (конт
 білда (`camoufoxPath(false)`), identity.json лишається портативним суперсетом. (2) `launchOptions()`
 щолаунч ре-семплить WebGL і `mergeInto`-перезаписує його поза fingerprint → персист fingerprint
 НЕ пінує WebGL; фікс — персистити `[vendor,renderer]` (`getPossiblePairs`) і передавати
-`launchArgs.webgl_config`. Залишковий дрейф: `canvas:aaOffset` (camoufox перезаписує щолаунч, немає
-launch-input override) — дрібний AA-jitter, не покривається без правки ядра camoufox.
+`launchArgs.webgl_config`. (3) `canvas:aaOffset` camoufox `mergeInto`-перезаписує щолаунч без
+launch-input override → пінується **пост-резолюшн** у хуку `browser:launching` (реасембл
+`CAMOU_CONFIG_*` env-чанків → override → ре-чанк). Підсумок E2E: **уся поверхня fingerprint
+(navigator/screen/fonts/WebGL/canvas) стабільна** через idle-kill relaunch (POSITIVE ідентично,
+NEGATIVE-контроль дрейфує).
 Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
 (2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
 через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через

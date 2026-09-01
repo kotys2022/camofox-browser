@@ -16,13 +16,15 @@ invariant.
 
 ## The seam
 
-The plugin subscribes to the **`browser:launchOptions`** pre-hook (added in core,
-`server.js`), which fires *before* `launchOptions()` resolves, and sets
-`launchArgs.fingerprint` + `launchArgs.config`.
+The plugin uses **two** hooks:
 
-> The older `browser:launching` hook is **too late**: by then `launchOptions()`
-> has already serialized the fingerprint into the `CAMOU_CONFIG_*` env chunks, so
-> mutating `options.fingerprint` there is a no-op.
+- **`browser:launchOptions`** (pre-resolution, added in core `server.js`): sets
+  `launchArgs.fingerprint` + `launchArgs.config` + `launchArgs.webgl_config`. This is
+  where fingerprint / seeds / WebGL must be set, because `launchOptions()` bakes them
+  into the `CAMOU_CONFIG_*` env chunks. Mutating `options.fingerprint` in the later
+  `browser:launching` hook would be a no-op.
+- **`browser:launching`** (post-resolution): pins `canvas:aaOffset` by rewriting those
+  `CAMOU_CONFIG_*` chunks — see below.
 
 ## What is persisted
 
@@ -35,22 +37,24 @@ The plugin subscribes to the **`browser:launchOptions`** pre-hook (added in core
    relaunch). We pass it back via `launchArgs.webgl_config` so the same pair is
    resolved deterministically each launch.
 3. **Noise seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`,
-   `window.history.length`) → `config`. camoufox re-randomizes these each launch
-   (set-only-if-unset), so without persisting them canvas/audio would drift even
-   with a stable fingerprint. Injection filters this to the keys the running build's
+   `window.history.length`, `canvas:aaOffset`) → `config`. camoufox re-randomizes
+   these each launch, so without persisting them canvas/audio would drift even with a
+   stable fingerprint. Injection filters this to the keys the running build's
    `properties.json` recognizes — older/Firefox-135 builds lack `audio:seed` /
    `canvas:seed` and `launchOptions()` throws `UnknownProperty` on unknown keys.
    `identity.json` stores the full superset so it stays portable across builds.
+4. **`canvas:aaOffset`** — special-cased. `launchOptions()` `mergeInto`-overwrites it
+   with a fresh random value every launch and offers no input override, so it's pinned
+   *post-resolution* in the `browser:launching` hook by reassembling the
+   `CAMOU_CONFIG_*` env chunks, overriding the value, and re-chunking. Without this the
+   raw canvas hash drifts every launch even with a stable fingerprint (verified).
 
 **Not persisted** (intentionally): IP-exact fields — `webrtc:ipv4`, precise
 geolocation. Left empty so `geoip=true` derives them from the current proxy IP each
 launch, staying coherent across sticky-IP changes within the same geo (SPEC-002 §6.1).
 
-**Known residual drift:** `canvas:aaOffset` (a small anti-aliasing offset) is
-`mergeInto`-overwritten by camoufox every launch with no launch-input override, so
-the raw canvas hash carries per-launch jitter that this plugin cannot pin without a
-core camoufox change. Navigator / screen / fonts / WebGL — the load-bearing
-fingerprint surface for session continuity — are stable.
+The full fingerprint surface — navigator / screen / fonts / WebGL / canvas — is
+verified stable across an idle-kill relaunch by `scripts/verify-identity-e2e.sh`.
 
 ## Configuration
 

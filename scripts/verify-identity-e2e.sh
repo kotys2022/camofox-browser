@@ -104,19 +104,19 @@ phase() {
   log "phase $name — starting container"
   run_container "$cfg"
 
-  # Stable identity = fingerprint-derived fields (ua/platform/webgl/screen/...).
-  # canvas:aaOffset is re-randomized every launch by camoufox on this build and is
-  # NOT part of the persisted identity, so canvas is compared informationally only.
+  # Full fingerprint surface incl. canvas: navigator/screen/WebGL are pinned via
+  # fingerprint+webgl_config, canvas:aaOffset is pinned post-resolution, so the
+  # whole bundle (canvas hash included) must be identical across relaunch.
   local fp1 fp2 s1 s2
-  fp1="$(capture_fp u1)"; s1="$(printf '%s' "$fp1" | jq -Sc 'del(.canvas)')"
-  log "$name launch#1 webgl=$(printf '%s' "$fp1" | jq -c '.webgl')"
+  fp1="$(capture_fp u1)"; s1="$(printf '%s' "$fp1" | jq -Sc .)"
+  log "$name launch#1 webgl=$(printf '%s' "$fp1" | jq -c '.webgl') canvas=…$(printf '%s' "$fp1" | jq -r '.canvas' | tail -c 16)"
   [ -f "$WORK/slot/identity.json" ] && log "$name identity.json: $(jq -c '{generatedAt,webgl,seeds:(.config|keys)}' "$WORK/slot/identity.json" 2>/dev/null)" || log "$name no identity.json (expected for NEGATIVE)"
 
   log "$name waiting for idle-kill relaunch (> ${IDLE_MS}ms)..."
   sleep "$(awk "BEGIN{print ($IDLE_MS/1000)+3}")"
 
-  fp2="$(capture_fp u2)"; s2="$(printf '%s' "$fp2" | jq -Sc 'del(.canvas)')"
-  log "$name launch#2 webgl=$(printf '%s' "$fp2" | jq -c '.webgl')"
+  fp2="$(capture_fp u2)"; s2="$(printf '%s' "$fp2" | jq -Sc .)"
+  log "$name launch#2 webgl=$(printf '%s' "$fp2" | jq -c '.webgl') canvas=…$(printf '%s' "$fp2" | jq -r '.canvas' | tail -c 16)"
 
   local injects
   injects="$(docker logs "$CID" 2>&1 | grep -c 'injected persistent fingerprint' || true)"

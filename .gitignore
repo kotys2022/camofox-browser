@@ -1,24 +1,44 @@
-# Node (camofox-browser — Node v22)
 node_modules/
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
 npm-debug.log*
-yarn-error.log*
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build
 dist/
 build/
-.cache/
+/plugin.js.map
 
-# Secrets / runtime
-.env
-.env.*
-*.key
-*.pem
-identity.json
-storage-state.json
-
-# Camofox runtime artefacts
-traces/
-*.trace.zip
-.camofox/
-
-# OS / editor
-.DS_Store
+# IDE
+.idea/
+.vscode/
 *.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# .github/ — removed to allow CI workflow tracking
+fly.toml
+
+# Camoufox cache
+.camoufox/
+
+# Test artifacts
+test-results/
+playwright-report/

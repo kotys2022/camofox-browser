@@ -19,23 +19,30 @@
 генерує **новий** fingerprint. Після idle-kill (5 хв) / crash / рестарту контейнера
 relaunch дає іншу ідентичність → платформа інвалідовує сесію (relogin/detection),
 ламається immutable-інваріант Profile (ADR §3).
-**Доказ (аналіз коду `camofox-browser:local` v1.6.0):** `persistence`-плагін зберігає
-лише `storage-state.json` (Layer-C: cookies/localStorage), fingerprint **не**
-персиститься; `server.js` не передає фіксований fingerprint у `launchOptions`. Camoufox
-генерує fp при кожному `firefox.launch`. З `BROWSER_IDLE_TIMEOUT_MS` браузер релончиться
-й **усередині живого контейнера**, не лише на старті.
-**Код:** `server.js` — `firefox.launch({os,humanize,…})` (singleton browser, ~:480/:1143);
-хук `launchOptions`. `camoufox-js.launchOptions` вже **приймає** готовий fingerprint/`config`
-(`fromBrowserforge`), тож механізм інжекції є — бракує читання persist-файлу.
-**Фікс:** гачок читає `FINGERPRINT_FILE` (напр. `/root/.camofox/slot/identity.json`) у
-**кожному** виклику `launchOptions` і віддає його як `config=`. Персистити **обидва шари**:
-(1) Browserforge (navigator/screen/webgl/fonts) + (2) noise-**seeds** (`audio:seed`,
-`canvas:seed`, `fonts:spacing_seed`, `window.history.length`) — інакше canvas/audio
-попливе (seeds рандомізуються щолаунч через `setInto`=set-only-if-unset). **НЕ** персистити
-IP-exact поля (`webrtc:ipv4`, точна geolocation): лишати порожніми, `geoip=true` деривує їх
-з поточного проксі-IP щолаунч (стійкість до зміни sticky-IP у межах гео — SPEC-002 §6.1).
-Провіженинг файла — SPEC-002 варіант (A) self-generate або (B) capture-on-first-launch
-(потребує ще й dump-хука).
+**Доказ (звірено з клоном upstream — увага: тепер `v1.14.0`, docs аналізували образ
+`v1.6.0`; механізм **не** змінився):** `launchOptions({os,proxy,geoip,humanize,…})`
+(`server.js:1120`) **не** передає ні `fingerprint`, ні `config` → camoufox-js генерує
+**новий** fp при кожному `firefox.launch(options)` (`server.js:1143`). Персисту fp нема
+ніде: `grep FINGERPRINT_FILE|identity.json|fromBrowserforge` → 0 збігів; `persistence`-плагін
+зберігає лише `storageState` (cookies/localStorage/opt-in IndexedDB — `plugins/persistence/README.md`),
+не fingerprint. З `BROWSER_IDLE_TIMEOUT_MS` браузер релончиться **усередині живого
+контейнера**, не лише на старті.
+**Код + готовий seam:** між `launchOptions()` і `firefox.launch()` вже є **мутуючий хук**
+`browser:launching { options }` (`server.js:1141`), офіційно задокументований як
+«mutate launch options» (`lib/plugins.js:11,56`), і **сьогодні на нього ніхто не підписаний**
+→ #12 реалізується **плагіном** (за зразком `persistence`/`vnc`), без правок ядра.
+API вже підтримує інжекцію: `camoufox-js@0.11.5` `launchOptions` приймає `fingerprint?: Fingerprint`
+**і** `config?` (`node_modules/camoufox-js/dist/utils.d.ts:68-71`), а `dist/fingerprints.d.ts`
+експонує `generateFingerprint(window?, config?)` + `fromBrowserforge(fingerprint)`.
+**Фікс:** новий плагін читає `FINGERPRINT_FILE` (напр. `/root/.camofox/slot/identity.json`)
+у хуку `browser:launching` при **кожному** launch і мутує `options.fingerprint`/`options.config`.
+Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
+(2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
+через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через
+`setInto`=set-only-if-unset). **НЕ** персистити IP-exact поля (`webrtc:ipv4`, точна geolocation):
+лишати порожніми, `geoip=true` деривує їх з поточного проксі-IP щолаунч (стійкість до зміни
+sticky-IP у межах гео — SPEC-002 §6.1). Провіженинг файла — SPEC-002 варіант (A) self-generate
+(`generateFingerprint()` у provisioner) або (B) capture-on-first-launch (потребує ще й dump-хука).
 **Категорії ідентифікаторів:** fingerprint і proxy — **launch-bound** (вшиваються в процес
 Camoufox через `CAMOU_CONFIG` при спавні; на живому браузері підмінити НЕ можна — лише
 relaunch); cookies/storage (Layer-C) — **context-bound** (вантажаться per `newContext`).

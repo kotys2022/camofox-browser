@@ -71,8 +71,8 @@ verified stable across an idle-kill relaunch by `scripts/verify-identity-e2e.sh`
 ```
 
 Or via environment: `CAMOFOX_FINGERPRINT_FILE=/root/.camofox/slot/identity.json`.
-(Env-gate activation `ENABLE_IDENTITY` requires FIXES.md **#1**; until then activate
-via the `plugins` list.)
+The plugin can also be activated by env var alone (FIXES.md **#1**): set
+`ENABLE_IDENTITY=1` to load it without listing it in `plugins{}`.
 
 If `fingerprintFile` is omitted it defaults to `<profileDir>/identity.json`.
 

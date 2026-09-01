@@ -83,8 +83,12 @@ relaunch); cookies/storage (Layer-C) — **context-bound** (вантажатьс
 `plugin.json→enableEnvVar` не діє.
 **Код:** `config.js:145-146` — `pluginEnv` хардкодиться ЛИШЕ на `ENABLE_VNC` (loadPlugins
 викликається без загального `options.env`). Тому VNC вмикається env-ом, а решта — ні.
-**Фікс:** прокинути env уніфіковано — для КОЖНОГО плагіна читати його `plugin.json.enableEnvVar`,
-а не хардкодити один VNC. Тоді `CR_FIXTURE=1` / `ENABLE_<PLUGIN>=1` працюватимуть однаково.
+**Фікс (ЗРОБЛЕНО):** `config.js` `pluginEnv` більше не хардкодить `{ENABLE_VNC}`, а віддає повний
+`process.env` → `loadPlugins` (`lib/plugins.js:156`) читає `plugin.json.enableEnvVar` КОЖНОГО плагіна
+проти реального env. Тепер `ENABLE_<PLUGIN>=1` (напр. `ENABLE_IDENTITY=1`) вмикає плагін, якого нема
+у списку `plugins{}`, як і VNC. Плагіни й так у цьому процесі → нового доступу до env не з'являється.
+Тест: `plugins.test.js` «env gate reads ctx.config.pluginEnv when options.env is absent». E2E-звірено
+наживо: `ENABLE_IDENTITY=1` + `plugins:{}` → лог `plugin enabled by environment plugin:identity`.
 **Приорітет:** 🟡 (developer-ergonomics; не блокує, але дорого дивує).
 
 ## #2 🔴 `evaluate` з проєкцією / лімітом результату

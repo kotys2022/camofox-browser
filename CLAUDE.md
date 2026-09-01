@@ -50,8 +50,9 @@ Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`) на КОЖНУ �
 
 ## Ключові архітектурні факти (перевірені, для орієнтації)
 - `config.js:81` — vnc mode allowlist `['off','desktop','novnc','auto']`.
-- `config.js:145-146` — **pluginEnv хардкодиться лише на `ENABLE_VNC`** → `plugin.json→enableEnvVar`
-  МЕРТВИЙ для всіх плагінів, крім vnc. Це корінь фікса #1.
+- `config.js` `pluginEnv` — **ВИПРАВЛЕНО (#1)**: раніше хардкодився лише на `ENABLE_VNC` (тому
+  `plugin.json→enableEnvVar` був мертвий для всіх, крім vnc); тепер віддає повний `process.env`,
+  тож `ENABLE_<PLUGIN>=1` вмикає будь-який плагін. `loadPlugins` (`lib/plugins.js:156`) читає gate.
 - `config.js:182,186,187` — ENABLE_VNC / VNC_PORT / NOVNC_PORT.
 - `/app/plugins/vnc/`: `index.js, spawn.js, vnc-launcher.js, vnc-watcher.sh, plugin.json(enableEnvVar:ENABLE_VNC)`.
 - `/app/lib/openapi.js`, `/app/lib/plugins.js` — містять screenshot; **REST snapshot НЕ повертає image**

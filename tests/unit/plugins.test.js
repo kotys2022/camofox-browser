@@ -181,6 +181,32 @@ describe('lib/plugins', () => {
       expect(app.loaded).toEqual([]);
     });
 
+    test('env gate reads ctx.config.pluginEnv when options.env is absent (#1 prod path)', async () => {
+      // In production loadPlugins is called without options.env; the env-gate
+      // must fall back to ctx.config.pluginEnv (which config.js sets to the full
+      // process.env). Before FIXES.md #1 that map only held ENABLE_VNC, so no
+      // other plugin could be enabled by its env var.
+      const pluginsDir = path.join(tmpDir, 'plugins');
+      const configPath = path.join(tmpDir, 'camofox.config.json');
+      fs.mkdirSync(pluginsDir);
+      makePlugin(
+        pluginsDir,
+        'env-enabled',
+        'export async function register(app) { app.loaded.push("env-enabled"); }\n',
+        { enableEnvVar: 'ENABLE_TEST_PLUGIN' }
+      );
+      fs.writeFileSync(configPath, JSON.stringify({ plugins: { 'env-enabled': { enabled: false } } }));
+
+      const ctx = makeMockCtx();
+      ctx.config = { pluginEnv: { ENABLE_TEST_PLUGIN: '1' } };
+      await loadPlugins({ loaded: [] }, ctx, { pluginsDir, configPath }); // no options.env
+
+      expect(ctx.log).toHaveBeenCalledWith('info', 'plugin enabled by environment', {
+        plugin: 'env-enabled',
+        envVar: 'ENABLE_TEST_PLUGIN',
+      });
+    });
+
     test('returns empty array when plugins directory does not exist', async () => {
       // loadPlugins checks the hardcoded PLUGINS_DIR, not tmpDir.
       // We test by providing a mock ctx -- if no plugins/ dir exists

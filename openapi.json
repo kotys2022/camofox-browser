@@ -741,7 +741,20 @@
                 "true",
                 "false"
               ]
-            }
+            },
+            "description": "When 'true', include a base64 PNG screenshot in the response."
+          },
+          {
+            "name": "screenshot",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Alias for includeScreenshot."
           }
         ],
         "responses": {
@@ -3058,7 +3071,20 @@
                 "true",
                 "false"
               ]
-            }
+            },
+            "description": "When 'true', include a base64 PNG screenshot in the response."
+          },
+          {
+            "name": "screenshot",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Alias for includeScreenshot."
           }
         ],
         "responses": {

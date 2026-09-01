@@ -136,9 +136,14 @@ garbage→fallback.
 
 ## #6 🟡 REST `snapshot` без зображення
 **Симптом:** через REST-шлях snapshot губиться візуал (скрін).
-**Доказ:** REST snapshot НЕ повертає image; лише MCP-snapshot завжди тягне скрін.
-**Код:** `/app/lib/openapi.js`, `/app/lib/plugins.js` (screenshot присутній, але не в REST-snapshot).
-**Фікс:** опційний `?screenshot=true` (base64) на REST snapshot-ендпоінті.
+**Доказ (звірено з v1.14.0):** REST snapshot **уже** повертає base64 PNG за `?includeScreenshot=true`
+(server.js, три шляхи; MCP `camofox_snapshot` шле саме цей параметр) — тобто основне вже є (докси
+з v1.6.0 застаріли). Лишався ергономічний сюрприз: FIXES/агенти тягнуться до `?screenshot=true`,
+а код чекав `includeScreenshot` → тихо без картинки.
+**Фікс (ЗРОБЛЕНО):** `?screenshot=true` прийнято як **аліас** до `includeScreenshot` на ОБОХ
+snapshot-endpoints (`GET /tabs/:id/snapshot` і OpenClaw `GET /snapshot`) через спільний
+`wantScreenshot`. openapi документує обидва. E2E-звірено: `?screenshot=true` → `{screenshot:{data(base64),
+mimeType:image/png}}`; без прапорця → без зображення (backward-compat).
 **Приорітет:** 🟡 (форензика/скриптовий шлях).
 
 ## #7 🟡 Спостережуваність аргументів тулів

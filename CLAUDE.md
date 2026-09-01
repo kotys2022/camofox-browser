@@ -55,8 +55,8 @@ Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`) на КОЖНУ �
   тож `ENABLE_<PLUGIN>=1` вмикає будь-який плагін. `loadPlugins` (`lib/plugins.js:156`) читає gate.
 - `config.js:182,186,187` — ENABLE_VNC / VNC_PORT / NOVNC_PORT.
 - `/app/plugins/vnc/`: `index.js, spawn.js, vnc-launcher.js, vnc-watcher.sh, plugin.json(enableEnvVar:ENABLE_VNC)`.
-- `/app/lib/openapi.js`, `/app/lib/plugins.js` — містять screenshot; **REST snapshot НЕ повертає image**
-  (лише MCP-snapshot тягне скрін) — фікс #6.
+- REST snapshot image — **ВИПРАВЛЕНО (#6)**: `?includeScreenshot=true` уже повертав base64 PNG
+  (докси з v1.6.0 застаріли); тепер `?screenshot=true` — аліас на обох snapshot-endpoints.
 - trace.zip осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume
   (обхід: `CAMOFOX_TRACES_DIR`) — дрібний фікс.
 - Логи `evaluate` містять `resultType`, але **НЕ сам expression** — фікс #7.

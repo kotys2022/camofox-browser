@@ -3328,6 +3328,13 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
  *         schema:
  *           type: string
  *           enum: ['true', 'false']
+ *         description: When 'true', include a base64 PNG screenshot in the response.
+ *       - name: screenshot
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: ['true', 'false']
+ *         description: Alias for includeScreenshot.
  *     responses:
  *       200:
  *         description: Snapshot.
@@ -3363,6 +3370,9 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId required' });
     const format = req.query.format || 'text';
     const offset = parseInt(req.query.offset) || 0;
+    // Accept `screenshot` as an alias for `includeScreenshot` (FIXES.md #6) --
+    // agents reach for the shorter name and would otherwise silently get no image.
+    const wantScreenshot = req.query.includeScreenshot === 'true' || req.query.screenshot === 'true';
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, req.params.tabId);
     if (!found) return tabNotFoundResponse(res, req.params.tabId || req.body?.tabId);
@@ -3375,7 +3385,7 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
     if (offset > 0 && tabState.lastSnapshot) {
       const win = windowSnapshot(tabState.lastSnapshot, offset);
       const response = { url: tabState.page.url(), snapshot: win.text, refsCount: tabState.refs.size, truncated: win.truncated, totalChars: win.totalChars, hasMore: win.hasMore, nextOffset: win.nextOffset };
-      if (req.query.includeScreenshot === 'true') {
+      if (wantScreenshot) {
         const pngBuffer = await tabState.page.screenshot({ type: 'png' });
         response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
       }
@@ -3422,7 +3432,7 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
           hasMore: win.hasMore,
           nextOffset: win.nextOffset,
         };
-        if (req.query.includeScreenshot === 'true') {
+        if (wantScreenshot) {
           const pngBuffer = await tabState.page.screenshot({ type: 'png' });
           response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
         }
@@ -3480,7 +3490,7 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
         nextOffset: win.nextOffset,
       };
 
-      if (req.query.includeScreenshot === 'true') {
+      if (wantScreenshot) {
         const pngBuffer = await tabState.page.screenshot({ type: 'png' });
         response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
       }
@@ -6439,6 +6449,13 @@ app.post('/navigate', async (req, res) => {
  *         schema:
  *           type: string
  *           enum: ['true', 'false']
+ *         description: When 'true', include a base64 PNG screenshot in the response.
+ *       - name: screenshot
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: ['true', 'false']
+ *         description: Alias for includeScreenshot.
  *     responses:
  *       200:
  *         description: Snapshot.
@@ -6463,6 +6480,8 @@ app.get('/snapshot', async (req, res) => {
   try {
     const { targetId, userId, format = 'text' } = req.query;
     const offset = parseInt(req.query.offset) || 0;
+    // `screenshot` is an alias for `includeScreenshot` (FIXES.md #6).
+    const wantScreenshot = req.query.includeScreenshot === 'true' || req.query.screenshot === 'true';
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' });
     }
@@ -6480,7 +6499,7 @@ app.get('/snapshot', async (req, res) => {
     if (offset > 0 && tabState.lastSnapshot) {
       const win = windowSnapshot(tabState.lastSnapshot, offset);
       const response = { ok: true, format: 'aria', targetId, url: tabState.page.url(), snapshot: win.text, refsCount: tabState.refs.size, truncated: win.truncated, totalChars: win.totalChars, hasMore: win.hasMore, nextOffset: win.nextOffset };
-      if (req.query.includeScreenshot === 'true') {
+      if (wantScreenshot) {
         const pngBuffer = await tabState.page.screenshot({ type: 'png' });
         response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
       }
@@ -6503,7 +6522,7 @@ app.get('/snapshot', async (req, res) => {
         truncated: win.truncated, totalChars: win.totalChars,
         hasMore: win.hasMore, nextOffset: win.nextOffset,
       };
-      if (req.query.includeScreenshot === 'true') {
+      if (wantScreenshot) {
         const pngBuffer = await tabState.page.screenshot({ type: 'png' });
         response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
       }
@@ -6555,7 +6574,7 @@ app.get('/snapshot', async (req, res) => {
       nextOffset: win.nextOffset,
     };
 
-    if (req.query.includeScreenshot === 'true') {
+    if (wantScreenshot) {
       const pngBuffer = await tabState.page.screenshot({ type: 'png' });
       response.screenshot = { data: pngBuffer.toString('base64'), mimeType: 'image/png' };
     }

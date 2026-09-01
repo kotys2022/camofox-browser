@@ -1879,6 +1879,15 @@
                   "expression": {
                     "type": "string",
                     "description": "JavaScript expression to evaluate."
+                  },
+                  "projection": {
+                    "type": "string",
+                    "description": "Optional jq-like path (\"data.items[0].name\") to extract a subtree from the result server-side, so only the needed slice is returned.\n"
+                  },
+                  "maxBytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional cap on the serialized result size; over the cap the result is truncated to a preview string with a marker. Overrides the server default (CAMOFOX_EVALUATE_MAX_RESULT_BYTES).\n"
                   }
                 }
               }
@@ -1887,7 +1896,7 @@
         },
         "responses": {
           "200": {
-            "description": "Evaluation result.",
+            "description": "Evaluation result. When projection/maxBytes are used, extra fields report what happened: projection {path, matched}, truncated, bytes {returned, total}.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -1896,7 +1905,32 @@
                     "ok": {
                       "type": "boolean"
                     },
-                    "result": {}
+                    "result": {},
+                    "projection": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "matched": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "bytes": {
+                      "type": "object",
+                      "properties": {
+                        "returned": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }

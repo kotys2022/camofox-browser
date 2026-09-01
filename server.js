@@ -22,6 +22,7 @@ import {
 } from './lib/downloads.js';
 import { extractPageImages } from './lib/images.js';
 import { extractDeterministic, validateSchema as validateExtractSchema } from './lib/extract.js';
+import { shapeEvaluateResult } from './lib/evaluate-projection.js';
 import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
@@ -4901,9 +4902,23 @@ app.get('/tabs/:tabId/stats', async (req, res) => {
  *               expression:
  *                 type: string
  *                 description: JavaScript expression to evaluate.
+ *               projection:
+ *                 type: string
+ *                 description: >
+ *                   Optional jq-like path ("data.items[0].name") to extract a subtree
+ *                   from the result server-side, so only the needed slice is returned.
+ *               maxBytes:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: >
+ *                   Optional cap on the serialized result size; over the cap the result
+ *                   is truncated to a preview string with a marker. Overrides the server
+ *                   default (CAMOFOX_EVALUATE_MAX_RESULT_BYTES).
  *     responses:
  *       200:
- *         description: Evaluation result.
+ *         description: >
+ *           Evaluation result. When projection/maxBytes are used, extra fields report
+ *           what happened: projection {path, matched}, truncated, bytes {returned, total}.
  *         content:
  *           application/json:
  *             schema:
@@ -4912,6 +4927,17 @@ app.get('/tabs/:tabId/stats', async (req, res) => {
  *                 ok:
  *                   type: boolean
  *                 result: {}
+ *                 projection:
+ *                   type: object
+ *                   properties:
+ *                     path: { type: string }
+ *                     matched: { type: boolean }
+ *                 truncated: { type: boolean }
+ *                 bytes:
+ *                   type: object
+ *                   properties:
+ *                     returned: { type: integer }
+ *                     total: { type: integer }
  *       400:
  *         description: Bad request.
  *         content:
@@ -4939,9 +4965,20 @@ app.get('/tabs/:tabId/stats', async (req, res) => {
  */
 app.post('/tabs/:tabId/evaluate', express.json({ limit: CONFIG.evaluateMaxBodySize }), async (req, res) => {
   try {
-    const { userId, expression } = req.body;
+    const { userId, expression, projection } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId is required' });
     if (!expression) return res.status(400).json({ error: 'expression is required' });
+    if (projection != null && typeof projection !== 'string') {
+      return res.status(400).json({ error: 'projection must be a string path (e.g. "data.items[0].name")' });
+    }
+    let maxBytes = req.body.maxBytes;
+    if (maxBytes != null) {
+      if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+        return res.status(400).json({ error: 'maxBytes must be a positive integer' });
+      }
+    } else {
+      maxBytes = CONFIG.evaluateMaxResultBytes || undefined; // server default (0 = unlimited)
+    }
 
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, req.params.tabId);
@@ -4952,15 +4989,21 @@ app.post('/tabs/:tabId/evaluate', express.json({ limit: CONFIG.evaluateMaxBodySi
     tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
 
     pluginEvents.emit('tab:evaluate', { userId, tabId: req.params.tabId, expression });
-    const result = await withUserLimit(userId, () => withTabLock(
+    const rawResult = await withUserLimit(userId, () => withTabLock(
       req.params.tabId,
       () => tabState.page.evaluate(expression),
       requestTimeoutMs(),
       () => destroyTimedOutTab(session, req.params.tabId, 'operation_timeout', userId),
     ));
+    // Project/cap server-side so huge blobs never reach the agent's context (#2).
+    const { result, meta } = shapeEvaluateResult(rawResult, { projection, maxBytes });
     pluginEvents.emit('tab:evaluated', { userId, tabId: req.params.tabId, result });
-    log('info', 'evaluate', { reqId: req.reqId, tabId: req.params.tabId, userId, resultType: typeof result });
-    res.json({ ok: true, result });
+    log('info', 'evaluate', {
+      reqId: req.reqId, tabId: req.params.tabId, userId, resultType: typeof rawResult,
+      projected: meta.projection ? meta.projection.matched : undefined,
+      truncated: meta.truncated || undefined,
+    });
+    res.json({ ok: true, result, ...meta });
   } catch (err) {
     log('error', 'evaluate failed', { reqId: req.reqId, tabId: req.params.tabId, error: err.message });
     handleRouteError(err, req, res);

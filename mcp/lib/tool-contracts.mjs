@@ -183,7 +183,7 @@ export const TOOL_DEFS = [
   {
     name: 'camofox_evaluate',
     description:
-      "Execute JavaScript in a Camoufox tab's page context. Returns the result of the expression. Use for injecting scripts, reading page state, or calling web app APIs.",
+      "Execute JavaScript in a Camoufox tab's page context. Returns the result of the expression. Use for injecting scripts, reading page state, or calling web app APIs. When a result may be large (e.g. a page's embedded JSON), pass `projection` to return only the needed field or `maxBytes` to cap the size -- this keeps big blobs out of your context.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -191,6 +191,17 @@ export const TOOL_DEFS = [
         expression: {
           type: 'string',
           description: 'JavaScript expression to evaluate in the page context',
+        },
+        projection: {
+          type: 'string',
+          description:
+            'Optional jq-like path ("data.items[0].name") to extract only that subtree from the result, instead of returning the whole object.',
+        },
+        maxBytes: {
+          type: 'integer',
+          minimum: 1,
+          description:
+            'Optional cap on the returned result size in bytes; over the cap it is truncated to a preview with a marker reporting the original size.',
         },
       },
       required: ['tabId', 'expression'],
@@ -323,7 +334,12 @@ export function buildRequest(name, args, ctx) {
         path: `/tabs/${args.tabId}/evaluate`,
         auth: 'accessKey',
         responseKind: 'json',
-        body: { userId, expression: args.expression },
+        body: {
+          userId,
+          expression: args.expression,
+          ...(args.projection != null ? { projection: args.projection } : {}),
+          ...(args.maxBytes != null ? { maxBytes: args.maxBytes } : {}),
+        },
       };
     case 'camofox_list_tabs':
       return {

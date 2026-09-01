@@ -135,9 +135,18 @@ describe('buildRequest', () => {
     expect(spec.body.tabId).toBeUndefined();
   });
 
-  test('evaluate body is exactly { userId, expression }', () => {
+  test('evaluate body is { userId, expression } when no shaping args given', () => {
     const spec = buildRequest('camofox_evaluate', { tabId: 't1', expression: 'document.title' }, CTX);
     expect(spec.body).toEqual({ userId: 'u1', expression: 'document.title' });
+  });
+
+  test('evaluate passes projection/maxBytes through only when provided (#2)', () => {
+    const spec = buildRequest(
+      'camofox_evaluate',
+      { tabId: 't1', expression: 'x', projection: 'a.b[0]', maxBytes: 2048 },
+      CTX,
+    );
+    expect(spec.body).toEqual({ userId: 'u1', expression: 'x', projection: 'a.b[0]', maxBytes: 2048 });
   });
 
   test('import_cookies is NOT synchronous (must use buildCookieRequest)', () => {

@@ -44,7 +44,17 @@ Camoufox читає `CAMOU_CONFIG_*` з env, тож мутація `options.fing
 у хуку `browser:launchOptions` при **кожному** launch і ставить `launchArgs.fingerprint`/`launchArgs.config`
 (deep-clone — `launchOptions()` мутує config in-place). `generate:true` → self-generate при першому
 launch (SPEC-002 варіант A). Тести: `plugins/identity/plugin.test.js` (генерація+реюз стабільний,
-no-clobber, generate=false fallback; E2E-стабільність `CAMOU_CONFIG` за `RUN_LIVE_TESTS`).
+no-clobber, generate=false fallback, schema-фільтр seeds; E2E-стабільність `CAMOU_CONFIG` за `RUN_LIVE_TESTS`).
+**E2E ЗВІРЕНО наживо** (`scripts/verify-identity-e2e.sh`, rebuild образу + idle-kill relaunch у
+живому контейнері): POSITIVE — WebGL/navigator/screen ІДЕНТИЧНІ до/після relaunch (хук ×2);
+NEGATIVE (без плагіна) — WebGL дрейфує NVIDIA→AMD (контроль доводить, що проб ловить дрейф).
+**Дві знахідки з E2E** (не з рев'ю коду): (1) білд Firefox-135 не має `audio:seed`/`canvas:seed`
+у `properties.json` → `validateConfig` кидав `UnknownProperty` → плагін фільтрує seeds за схемою
+білда (`camoufoxPath(false)`), identity.json лишається портативним суперсетом. (2) `launchOptions()`
+щолаунч ре-семплить WebGL і `mergeInto`-перезаписує його поза fingerprint → персист fingerprint
+НЕ пінує WebGL; фікс — персистити `[vendor,renderer]` (`getPossiblePairs`) і передавати
+`launchArgs.webgl_config`. Залишковий дрейф: `canvas:aaOffset` (camoufox перезаписує щолаунч, немає
+launch-input override) — дрібний AA-jitter, не покривається без правки ядра camoufox.
 Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
 (2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
 через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через

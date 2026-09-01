@@ -28,15 +28,29 @@ The plugin subscribes to the **`browser:launchOptions`** pre-hook (added in core
 
 `identity.json` holds two layers, both required for coherence:
 
-1. **Browserforge `Fingerprint`** (navigator / screen / webgl / fonts) → `fingerprint`.
-2. **Noise seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`,
+1. **Browserforge `Fingerprint`** (navigator / screen / fonts) → `fingerprint`.
+2. **WebGL vendor/renderer pair** → `webgl` (`[vendor, renderer]`). `launchOptions()`
+   re-samples a *random* WebGL pair every launch and overwrites it, so a persisted
+   fingerprint alone does **not** pin WebGL (verified: it drifts Mesa↔Intel across
+   relaunch). We pass it back via `launchArgs.webgl_config` so the same pair is
+   resolved deterministically each launch.
+3. **Noise seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`,
    `window.history.length`) → `config`. camoufox re-randomizes these each launch
    (set-only-if-unset), so without persisting them canvas/audio would drift even
-   with a stable fingerprint.
+   with a stable fingerprint. Injection filters this to the keys the running build's
+   `properties.json` recognizes — older/Firefox-135 builds lack `audio:seed` /
+   `canvas:seed` and `launchOptions()` throws `UnknownProperty` on unknown keys.
+   `identity.json` stores the full superset so it stays portable across builds.
 
 **Not persisted** (intentionally): IP-exact fields — `webrtc:ipv4`, precise
 geolocation. Left empty so `geoip=true` derives them from the current proxy IP each
 launch, staying coherent across sticky-IP changes within the same geo (SPEC-002 §6.1).
+
+**Known residual drift:** `canvas:aaOffset` (a small anti-aliasing offset) is
+`mergeInto`-overwritten by camoufox every launch with no launch-input override, so
+the raw canvas hash carries per-launch jitter that this plugin cannot pin without a
+core camoufox change. Navigator / screen / fonts / WebGL — the load-bearing
+fingerprint surface for session continuity — are stable.
 
 ## Configuration
 

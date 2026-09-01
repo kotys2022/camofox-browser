@@ -59,6 +59,34 @@ describe('identity plugin', () => {
     expect(b.config).toEqual(a.config);
   });
 
+  test('filters injected seeds to the build property schema (regression: audio:seed)', async () => {
+    // Fake build dir whose properties.json lacks audio:seed / canvas:seed
+    // (mirrors the Firefox-135 camoufox schema that rejected them).
+    const binDir = path.join(tmpDir, 'bin');
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(path.join(binDir, 'properties.json'), JSON.stringify([
+      { property: 'fonts:spacing_seed', type: 'uint' },
+      { property: 'window.history.length', type: 'uint' },
+    ]));
+    const file = path.join(tmpDir, 'identity.json');
+    await register(mockApp, ctx, { fingerprintFile: file });
+
+    const a = makeLaunchArgs();
+    a.executable_path = path.join(binDir, 'camoufox'); // -> dirname/properties.json
+    await events.emitAsync('browser:launchOptions', { launchArgs: a });
+
+    // Injected config keeps only schema-known seeds.
+    expect(a.config['fonts:spacing_seed']).toBeGreaterThan(0);
+    expect(a.config['window.history.length']).toBeGreaterThan(0);
+    expect('audio:seed' in a.config).toBe(false);
+    expect('canvas:seed' in a.config).toBe(false);
+
+    // identity.json still persists the full portable superset.
+    const saved = JSON.parse(await fs.readFile(file, 'utf-8'));
+    expect(saved.config['audio:seed']).toBeGreaterThan(0);
+    expect(saved.config['canvas:seed']).toBeGreaterThan(0);
+  });
+
   test('does not clobber a fingerprint already set by another plugin', async () => {
     await register(mockApp, ctx, { fingerprintFile: path.join(tmpDir, 'identity.json') });
     const a = makeLaunchArgs();

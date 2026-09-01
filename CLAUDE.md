@@ -46,7 +46,9 @@ docker run -d --rm --name cfx --shm-size=2g -p 127.0.0.1:9380:9377 \
 # kill:   DELETE :9380/sessions/<userId>
 ```
 Прод-камофокс BotoFerma/harness тримає **:9377** — тестові контейнери гнати на **9378-9380**.
-Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`) на КОЖНУ сесію.
+Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`). **keep-warm (#8):**
+`BROWSER_IDLE_TIMEOUT_MS=0` → браузер не idle-закривається + eager re-warm після crash
+(`lib/keep-warm.js`); дефолт 5хв idle без змін. Пул контейнерів — окремо, NixOS (pool-SPEC).
 
 ## Ключові архітектурні факти (перевірені, для орієнтації)
 - `config.js:81` — vnc mode allowlist `['off','desktop','novnc','auto']`.

@@ -26,6 +26,7 @@ import { shapeEvaluateResult } from './lib/evaluate-projection.js';
 import { buildUrlMatcher } from './lib/capture.js';
 import { normalizeWaitFor } from './lib/wait-for.js';
 import { redactToolArg } from './lib/redact.js';
+import { isKeepWarm, shouldRewarmAfterClose } from './lib/keep-warm.js';
 import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
@@ -679,6 +680,9 @@ if (proxyPool) {
 }
 
 const BROWSER_IDLE_TIMEOUT_MS = CONFIG.browserIdleTimeoutMs;
+// Keep-warm (FIXES.md #8): BROWSER_IDLE_TIMEOUT_MS=0 disables idle shutdown and
+// enables proactive re-warm after an unexpected close.
+const BROWSER_KEEP_WARM = isKeepWarm(BROWSER_IDLE_TIMEOUT_MS);
 let browserIdleTimer = null;
 let browserLaunchPromise = null;
 let browserWarmRetryTimer = null;
@@ -689,6 +693,7 @@ let _lastBrowserStopReason = null;
 const INTENTIONAL_STOP_REASONS = new Set(['idle_shutdown', 'admin_stop']);
 
 function scheduleBrowserIdleShutdown() {
+  if (BROWSER_KEEP_WARM) return; // keep-warm: never idle-close the browser (#8)
   if (browserIdleTimer || sessions.size > 0 || !browser) return;
   browserIdleTimer = setTimeout(async () => {
     browserIdleTimer = null;
@@ -926,6 +931,18 @@ function attachBrowserCleanup(candidateBrowser, localVirtualDisplay) {
       if (virtualDisplay === localVirtualDisplay) virtualDisplay = null;
     }
   };
+
+  // Keep-warm (#8): react to an *unexpected* disconnect (crash / killed process)
+  // proactively, instead of waiting for the next request's lazy ensureBrowser().
+  // Guarded so it only fires for the current browser and never during an
+  // intentional close (which nulls `browser` before invoking b.close()).
+  if (BROWSER_KEEP_WARM) {
+    candidateBrowser.on('disconnected', () => {
+      if (browser !== candidateBrowser) return; // intentional close already underway
+      log('warn', 'keep-warm: browser disconnected unexpectedly, recovering');
+      closeBrowserFully('browser_disconnected').catch(() => {});
+    });
+  }
 }
 
 /**
@@ -1015,6 +1032,13 @@ async function _closeBrowserFullyImpl(reason) {
   log('info', 'browser closed fully', {
     reason, pid, preCloseFds, postCloseFds, preCloseHandles, postCloseHandles,
   });
+
+  // Keep-warm (#8): after an unexpected close, bring the browser back proactively
+  // so the next request isn't cold. Skips deliberate stops (shutdown/admin_stop).
+  if (shouldRewarmAfterClose(reason, BROWSER_KEEP_WARM)) {
+    log('info', 'keep-warm: re-warming browser after close', { reason });
+    scheduleBrowserWarmRetry(1000);
+  }
 }
 
 /**
@@ -7016,7 +7040,7 @@ const server = app.listen(PORT, CONFIG.bindHost || undefined, async () => {
   try {
     const start = Date.now();
     await ensureBrowser();
-    log('info', 'browser pre-warmed', { ms: Date.now() - start });
+    log('info', 'browser pre-warmed', { ms: Date.now() - start, keepWarm: BROWSER_KEEP_WARM });
     scheduleBrowserIdleShutdown();
   } catch (err) {
     if (isFatalInstallError(err)) {

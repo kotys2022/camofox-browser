@@ -161,10 +161,20 @@ mimeType:image/png}}`; без прапорця → без зображення (
 
 ## #8 🟢 Пул / keep-warm браузера
 **Симптом:** кожна сесія — холодний старт ~10с; на матриці з десятків прогонів набігає.
-**Доказ:** лог `browser pre-warmed ~9963ms` на кожну нову сесію.
-**Фікс:** опційний пул теплих контекстів або persistent-режим повторного використання.
-**Зв'язок:** прямо стосується `BotoFerma/docs/SPEC-camofox-pool-pattern-A.md`.
-**Приорітет:** 🟢 (продуктивність під навантаженням; узгодити з pool-SPEC).
+**Доказ:** лог `browser pre-warmed ~9963ms`; браузер idle-закривається через `BROWSER_IDLE_TIMEOUT_MS`
+(дефолт 5хв), тож прогони, рознесені ширше за це вікно (matrix-клітинки ~23хв), холоднішали щоразу.
+**Межа (звірено з pool-SPEC):** справжній пул = **N контейнерів**, декларативний NixOS
+(`SPEC-camofox-pool-pattern-A`, «MCP-код не змінюється, контейнерами не керує»; мульти-браузер в
+одному контейнері — відхилено). Тож у движку — лише **keep-warm** одного браузера, не пул.
+**Фікс (ЗРОБЛЕНО, движкова половина):** `BROWSER_IDLE_TIMEOUT_MS=0` вмикає keep-warm — (1) не
+idle-закривати браузер (гард у `scheduleBrowserIdleShutdown`), (2) **eager re-warm** після
+неочікуваного закриття (crash/disconnect/memory) через `scheduleBrowserWarmRetry` (backoff-safe),
+не чекаючи наступного запиту; НЕ re-warm на `shutdown`/`admin_stop`. Логіка — `lib/keep-warm.js`
+(`isKeepWarm`/`shouldRewarmAfterClose`, unit-тести). Дефолт (5хв idle) — без змін.
+E2E-звірено: keep-warm=on → після drop сесії браузер лишається connected (без idle-shutdown);
+off (короткий idle) → закривається; kill camoufox → авто re-warm без запиту.
+**Зв'язок:** доповнює `SPEC-camofox-pool-pattern-A` (пул контейнерів) — кожен слот тепер може лишатись теплим.
+**Приорітет:** 🟢 (продуктивність під навантаженням).
 
 ## Дрібне
 - **trace.zip** осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume.

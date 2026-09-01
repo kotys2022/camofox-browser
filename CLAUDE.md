@@ -60,7 +60,9 @@ Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`) на КОЖНУ �
 - trace.zip осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume
   (обхід: `CAMOFOX_TRACES_DIR`) — дрібний фікс.
 - Логи `evaluate` містять `resultType`, але **НЕ сам expression** — фікс #7.
-- Дефолтний віртуальний дисплей **1×1**; vnc перекриває на 1920×1080 → headless ≠ watched env — фікс #5.
+- Дефолтний віртуальний дисплей — **ВИПРАВЛЕНО (#5)**: базовий camoufox-js 1×1, але ядро вже давало
+  1280×720; тепер конфігуровано через `CAMOFOX_DISPLAY_RESOLUTION` (дефолт 1280×720). vnc перекриває
+  своєю (1920×1080) → для паритету headless↔watched вирівняти обидві.
 
 ## Середовище
 NixOS, shell **fish** (без heredoc `<<`), python `/run/current-system/sw/bin/python3`, docker 29.5.2.

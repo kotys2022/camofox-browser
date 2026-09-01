@@ -63,6 +63,8 @@ export async function register(app, ctx, pluginConfig = {}) {
   const { resolution } = vncConfig;
 
   class VncVirtualDisplay extends VirtualDisplay {
+    get resolution() { return resolution; }
+
     get xvfb_args() {
       const args = super.xvfb_args;
       const idx = args.indexOf('0');

@@ -120,11 +120,18 @@ fallback-таймаутом і повертають, коли умова вик�
 
 ## #5 🟡 Дефолтний віртуальний дисплей ≠ 1×1
 **Симптом:** headless-прогін і watch-прогін (VNC) — РІЗНІ середовища; не можна чисто змішувати дані.
-**Доказ:** дефолт Xvfb **1×1**; vnc-плагін перекриває на **1920×1080** (`vnc plugin: overriding
-Xvfb resolution 1920x1080x24`). Отже viewport-залежний рендер/скріншоти відрізняються.
-**Код:** `ctx.createVirtualDisplay` (vnc override у `/app/plugins/vnc/`); дефолт 1×1 у ядрі.
-**Фікс:** дефолтний віртуальний дисплей — реальний розмір (напр. 1280×720), незалежно від VNC;
-або окрема `display.resolution` у конфігу.
+**Доказ (звірено з v1.14.0):** базовий camoufox-js Xvfb — `1x1x24`, АЛЕ ядро вже перекриває його
+на **1280×720** (`DefaultVirtualDisplay`, server.js) — тобто «1×1» уже нема (докси аналізували
+образ v1.6.0). Лишалась справжня проблема: розмір був **хардкод**, тож headless (1280×720) ≠
+watched VNC (1920×1080) — скріншоти не порівняти.
+**Код:** `ctx.createVirtualDisplay` (vnc override у `/app/plugins/vnc/`); `DefaultVirtualDisplay` у ядрі.
+**Фікс (ЗРОБЛЕНО):** дефолт-роздільність конфігурована через `CAMOFOX_DISPLAY_RESOLUTION` (формат
+`WxH`/`WxHxDepth`, дефолт `1280x720x24`; невалідне → fallback на дефолт; `lib/display.js`
+`normalizeDisplayResolution`). Оператор може вирівняти headless із VNC для паритету скріншотів.
+VNC-плагін і далі перекриває своєю роздільністю. Лог `xvfb virtual display started` тепер містить
+`resolution` (з `.resolution`-геттера дисплея, точний і за VNC-override). E2E-звірено: env
+`CAMOFOX_DISPLAY_RESOLUTION=1600x900` → Xvfb `-screen 0 1600x900x24`; default→1280x720x24;
+garbage→fallback.
 **Приорітет:** 🟡 (детермінізм/паритет headless↔watched; впливає на скріншоти).
 
 ## #6 🟡 REST `snapshot` без зображення

@@ -844,9 +844,12 @@ function getTotalTabCount() {
 // Virtual display for WebGL support and anti-detection.
 // Xvfb gives Firefox a real X display with GLX, enabling software-rendered WebGL
 // via Mesa llvmpipe. Without this, WebGL returns "no context" -- a massive bot signal.
-const DEFAULT_VIRTUAL_DISPLAY_RESOLUTION = '1280x720x24';
+// Configurable via CAMOFOX_DISPLAY_RESOLUTION (FIXES.md #5); defaults to 1280x720x24.
+const DEFAULT_VIRTUAL_DISPLAY_RESOLUTION = CONFIG.displayResolution;
 
 class DefaultVirtualDisplay extends VirtualDisplay {
+  get resolution() { return DEFAULT_VIRTUAL_DISPLAY_RESOLUTION; }
+
   get xvfb_args() {
     const args = super.xvfb_args;
     const idx = args.indexOf('0');
@@ -1093,7 +1096,7 @@ async function launchBrowserInstance() {
       if (os.platform() === 'linux' && !useDesktopWindow) {
         localVirtualDisplay = pluginCtx.createVirtualDisplay();
         vdDisplay = await localVirtualDisplay.get();
-        log('info', 'xvfb virtual display started', { display: vdDisplay, attempt });
+        log('info', 'xvfb virtual display started', { display: vdDisplay, resolution: localVirtualDisplay.resolution || CONFIG.displayResolution, attempt });
       }
     } catch (err) {
       log('warn', 'xvfb not available, falling back to headless', { error: err.message, attempt });

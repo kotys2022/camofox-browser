@@ -28,7 +28,9 @@ describe('launch compatibility source contract', () => {
       'const loadedPlugins = await loadPlugins'
     );
 
-    expect(defaultVirtualDisplay).toContain("DEFAULT_VIRTUAL_DISPLAY_RESOLUTION = '1280x720x24'");
+    // Resolution is configurable (FIXES.md #5) -- sourced from CONFIG, which
+    // defaults to 1280x720x24 (lib/display.js), never the base camoufox-js 1x1.
+    expect(defaultVirtualDisplay).toContain('DEFAULT_VIRTUAL_DISPLAY_RESOLUTION = CONFIG.displayResolution');
     expect(defaultVirtualDisplay).toContain('class DefaultVirtualDisplay extends VirtualDisplay');
     expect(defaultVirtualDisplay).toContain('patched[idx + 1] = DEFAULT_VIRTUAL_DISPLAY_RESOLUTION');
     expect(pluginContext).toContain('createVirtualDisplay: () => new DefaultVirtualDisplay()');

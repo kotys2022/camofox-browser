@@ -1117,7 +1117,7 @@ async function launchBrowserInstance() {
           excludeAddons: ['UBO'],
         });
       }
-      const options = await launchOptions({
+      const launchArgs = {
         executable_path: externalCamoufox?.executablePath,
         headless: useVirtualDisplay ? false : !useDesktopWindow,
         os: hostOS,
@@ -1127,7 +1127,14 @@ async function launchBrowserInstance() {
         geoip: !!launchProxy,
         virtual_display: vdDisplay,
         exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
-      });
+      };
+      // Pre-resolution hook: plugins may inject fingerprint/config into the
+      // launchOptions() *input* here. This is the only seam where a persistent
+      // identity can be set -- the later browser:launching hook fires after
+      // launchOptions() has already baked the fingerprint into the CAMOU_CONFIG_*
+      // env chunks, so mutating options.fingerprint there is a no-op.
+      await pluginEvents.emitAsync('browser:launchOptions', { launchArgs });
+      const options = await launchOptions(launchArgs);
       options.proxy = normalizePlaywrightProxy(options.proxy);
       // Playwright's launcher defaults handleSIGTERM/SIGINT/SIGHUP to true,
       // registering its own process signal handlers that send Browser.close

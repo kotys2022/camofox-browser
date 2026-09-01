@@ -27,15 +27,24 @@ relaunch дає іншу ідентичність → платформа інв�
 зберігає лише `storageState` (cookies/localStorage/opt-in IndexedDB — `plugins/persistence/README.md`),
 не fingerprint. З `BROWSER_IDLE_TIMEOUT_MS` браузер релончиться **усередині живого
 контейнера**, не лише на старті.
-**Код + готовий seam:** між `launchOptions()` і `firefox.launch()` вже є **мутуючий хук**
-`browser:launching { options }` (`server.js:1141`), офіційно задокументований як
-«mutate launch options» (`lib/plugins.js:11,56`), і **сьогодні на нього ніхто не підписаний**
-→ #12 реалізується **плагіном** (за зразком `persistence`/`vnc`), без правок ядра.
-API вже підтримує інжекцію: `camoufox-js@0.11.5` `launchOptions` приймає `fingerprint?: Fingerprint`
-**і** `config?` (`node_modules/camoufox-js/dist/utils.d.ts:68-71`), а `dist/fingerprints.d.ts`
-експонує `generateFingerprint(window?, config?)` + `fromBrowserforge(fingerprint)`.
-**Фікс:** новий плагін читає `FINGERPRINT_FILE` (напр. `/root/.camofox/slot/identity.json`)
-у хуку `browser:launching` при **кожному** launch і мутує `options.fingerprint`/`options.config`.
+**Код + seam (ЗВІРЕНО з v1.14.0 — попередній план був хибний):** наявний хук
+`browser:launching { options }` (`server.js:1141`) фізично **надто пізній**. `options` там —
+це вже **результат** `launchOptions()` (1120→1130): fingerprint вливається в `config`
+(`utils.js:414` `mergeInto(config, fromBrowserforge(fingerprint))`), додаються seeds
+(`utils.js:426-433`), і весь config серіалізується в env-чанки `CAMOU_CONFIG_*`
+(`utils.js:548` `getEnvVars`). Повернений об'єкт **не має** полів `.fingerprint`/`.config` —
+Camoufox читає `CAMOU_CONFIG_*` з env, тож мутація `options.fingerprint` у `browser:launching`
+= **no-op**. Тому «без правок ядра» **неможливо**.
+**Рішення (реалізовано, path A):** у ядро додано **пре-хук** `browser:launchOptions { launchArgs }`
+*перед* `launchOptions()` (`server.js:1120`), який дає плагінам вписати `fingerprint`/`config`
+у **вхід** резолвера (офіційні параметри `camoufox-js`: `launchOptions({…fingerprint?, config?})`,
+`utils.d.ts:68-71`; `dist/fingerprints.d.ts` → `generateFingerprint`/`fromBrowserforge`).
+Задокументовано в `lib/plugins.js` (мутуючий хук поряд з `browser:launching`, `session:creating`).
+**Фікс:** плагін `plugins/identity/` читає `CAMOFOX_FINGERPRINT_FILE` (дефолт `<profileDir>/identity.json`)
+у хуку `browser:launchOptions` при **кожному** launch і ставить `launchArgs.fingerprint`/`launchArgs.config`
+(deep-clone — `launchOptions()` мутує config in-place). `generate:true` → self-generate при першому
+launch (SPEC-002 варіант A). Тести: `plugins/identity/plugin.test.js` (генерація+реюз стабільний,
+no-clobber, generate=false fallback; E2E-стабільність `CAMOU_CONFIG` за `RUN_LIVE_TESTS`).
 Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
 (2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
 через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через

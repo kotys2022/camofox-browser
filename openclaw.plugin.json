@@ -186,7 +186,8 @@
     "camofox_close_tab",
     "camofox_evaluate",
     "camofox_list_tabs",
-    "camofox_import_cookies"
+    "camofox_import_cookies",
+    "camofox_capture_response"
   ],
   "contracts": {
     "tools": [
@@ -200,7 +201,8 @@
       "camofox_close_tab",
       "camofox_evaluate",
       "camofox_list_tabs",
-      "camofox_import_cookies"
+      "camofox_import_cookies",
+      "camofox_capture_response"
     ]
   },
   "runtimeDependencies": {

@@ -113,6 +113,10 @@
       {
         "name": "camofox_import_cookies",
         "description": "Import Netscape cookie file (requires CAMOFOX_API_KEY)"
+      },
+      {
+        "name": "camofox_capture_response",
+        "description": "Capture the first XHR/fetch response matching a URL pattern (JSON body)"
       }
     ]
   },

@@ -1979,6 +1979,148 @@
         }
       }
     },
+    "/tabs/{tabId}/capture": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Capture the first XHR/fetch response matching a URL pattern",
+        "description": "Waits for the next network response whose URL matches `urlPattern` and returns its body (parsed JSON when the content-type is JSON, else text). More reliable than a hand-written `fetch()` in evaluate -- it reads the page's own request (cookies/headers intact) and never trips CORS. Set `reload:true` to re-trigger responses that fire on page load. Supports the same `projection`/`maxBytes` shaping as evaluate so large payloads never flood the caller's context.\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "urlPattern"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "urlPattern": {
+                    "type": "string",
+                    "description": "Substring match, or a /regex/ compiled against the full URL."
+                  },
+                  "timeoutMs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Max wait for a matching response (default 15000, capped 120000)."
+                  },
+                  "reload": {
+                    "type": "boolean",
+                    "description": "Reload the page after arming the listener to re-trigger on-load XHRs."
+                  },
+                  "projection": {
+                    "type": "string",
+                    "description": "jq-like path to extract only a subtree of the response body."
+                  },
+                  "maxBytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Cap the returned body size; over it, truncate to a preview with a marker."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Captured response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "result": {},
+                    "projection": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "matched": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "bytes": {
+                      "type": "object",
+                      "properties": {
+                        "returned": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "No matching response within the timeout.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tabs/{tabId}/extract": {
       "post": {
         "tags": [

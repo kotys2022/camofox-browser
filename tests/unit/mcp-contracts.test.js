@@ -88,8 +88,8 @@ afterEach(() => {
 
 // --- Schema sanity ----------------------------------------------------------
 describe('TOOL_DEFS', () => {
-  test('exposes exactly 11 tools', () => {
-    expect(TOOL_DEFS).toHaveLength(11);
+  test('exposes exactly 12 tools', () => {
+    expect(TOOL_DEFS).toHaveLength(12);
   });
 
   test('every def has a unique name and a valid JSON-Schema object', () => {
@@ -115,6 +115,7 @@ describe('buildRequest', () => {
     ['camofox_screenshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/screenshot?userId=u1', auth: 'accessKey', kind: 'image' }],
     ['camofox_close_tab', { tabId: 't1' }, { method: 'DELETE', path: '/tabs/t1?userId=u1', auth: 'accessKey', kind: 'json' }],
     ['camofox_evaluate', { tabId: 't1', expression: '1+1' }, { method: 'POST', path: '/tabs/t1/evaluate', auth: 'accessKey', kind: 'json' }],
+    ['camofox_capture_response', { tabId: 't1', urlPattern: '/exclusive' }, { method: 'POST', path: '/tabs/t1/capture', auth: 'accessKey', kind: 'json' }],
     ['camofox_list_tabs', {}, { method: 'GET', path: '/tabs?userId=u1', auth: 'accessKey', kind: 'json' }],
   ])('%s → %s %s (auth=%s)', (name, args, expected) => {
     const spec = buildRequest(name, args, CTX);
@@ -147,6 +148,19 @@ describe('buildRequest', () => {
       CTX,
     );
     expect(spec.body).toEqual({ userId: 'u1', expression: 'x', projection: 'a.b[0]', maxBytes: 2048 });
+  });
+
+  test('capture_response body is { userId, urlPattern } plus provided opts (#3)', () => {
+    const min = buildRequest('camofox_capture_response', { tabId: 't1', urlPattern: '/exclusive' }, CTX);
+    expect(min.body).toEqual({ userId: 'u1', urlPattern: '/exclusive' });
+    const full = buildRequest(
+      'camofox_capture_response',
+      { tabId: 't1', urlPattern: '/api/', timeoutMs: 8000, reload: true, projection: 'data', maxBytes: 4096 },
+      CTX,
+    );
+    expect(full.body).toEqual({
+      userId: 'u1', urlPattern: '/api/', timeoutMs: 8000, reload: true, projection: 'data', maxBytes: 4096,
+    });
   });
 
   test('import_cookies is NOT synchronous (must use buildCookieRequest)', () => {

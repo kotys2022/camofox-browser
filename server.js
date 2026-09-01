@@ -23,6 +23,7 @@ import {
 import { extractPageImages } from './lib/images.js';
 import { extractDeterministic, validateSchema as validateExtractSchema } from './lib/extract.js';
 import { shapeEvaluateResult } from './lib/evaluate-projection.js';
+import { buildUrlMatcher } from './lib/capture.js';
 import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
@@ -5006,6 +5007,160 @@ app.post('/tabs/:tabId/evaluate', express.json({ limit: CONFIG.evaluateMaxBodySi
     res.json({ ok: true, result, ...meta });
   } catch (err) {
     log('error', 'evaluate failed', { reqId: req.reqId, tabId: req.params.tabId, error: err.message });
+    handleRouteError(err, req, res);
+  }
+});
+
+/**
+ * @openapi
+ * /tabs/{tabId}/capture:
+ *   post:
+ *     tags: [Interaction]
+ *     summary: Capture the first XHR/fetch response matching a URL pattern
+ *     description: >
+ *       Waits for the next network response whose URL matches `urlPattern` and returns
+ *       its body (parsed JSON when the content-type is JSON, else text). More reliable
+ *       than a hand-written `fetch()` in evaluate -- it reads the page's own request
+ *       (cookies/headers intact) and never trips CORS. Set `reload:true` to re-trigger
+ *       responses that fire on page load. Supports the same `projection`/`maxBytes`
+ *       shaping as evaluate so large payloads never flood the caller's context.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, urlPattern]
+ *             properties:
+ *               userId: { type: string }
+ *               urlPattern:
+ *                 type: string
+ *                 description: Substring match, or a /regex/ compiled against the full URL.
+ *               timeoutMs:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Max wait for a matching response (default 15000, capped 120000).
+ *               reload:
+ *                 type: boolean
+ *                 description: Reload the page after arming the listener to re-trigger on-load XHRs.
+ *               projection:
+ *                 type: string
+ *                 description: jq-like path to extract only a subtree of the response body.
+ *               maxBytes:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Cap the returned body size; over it, truncate to a preview with a marker.
+ *     responses:
+ *       200:
+ *         description: Captured response.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 url: { type: string }
+ *                 status: { type: integer }
+ *                 contentType: { type: string }
+ *                 result: {}
+ *                 projection:
+ *                   type: object
+ *                   properties: { path: { type: string }, matched: { type: boolean } }
+ *                 truncated: { type: boolean }
+ *                 bytes:
+ *                   type: object
+ *                   properties: { returned: { type: integer }, total: { type: integer } }
+ *       400: { description: Bad request., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Tab not found., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       504: { description: No matching response within the timeout., content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+app.post('/tabs/:tabId/capture', express.json({ limit: CONFIG.evaluateMaxBodySize }), async (req, res) => {
+  const tabId = req.params.tabId;
+  try {
+    const { userId, urlPattern, projection } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    if (!urlPattern || typeof urlPattern !== 'string') {
+      return res.status(400).json({ error: 'urlPattern is required (substring or /regex/)' });
+    }
+    if (projection != null && typeof projection !== 'string') {
+      return res.status(400).json({ error: 'projection must be a string path' });
+    }
+    let maxBytes = req.body.maxBytes;
+    if (maxBytes != null) {
+      if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+        return res.status(400).json({ error: 'maxBytes must be a positive integer' });
+      }
+    } else {
+      maxBytes = CONFIG.evaluateMaxResultBytes || undefined;
+    }
+    let timeoutMs = req.body.timeoutMs;
+    if (timeoutMs != null) {
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+        return res.status(400).json({ error: 'timeoutMs must be a positive integer' });
+      }
+    } else {
+      timeoutMs = 15000;
+    }
+    timeoutMs = Math.min(timeoutMs, 120000);
+    const reload = req.body.reload === true;
+
+    let matcher;
+    try {
+      matcher = buildUrlMatcher(urlPattern);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, tabId);
+    if (!found) return tabNotFoundResponse(res, tabId);
+    session.lastAccess = Date.now();
+    const { tabState } = found;
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+
+    const captured = await withUserLimit(userId, () => withTabLock(
+      tabId,
+      async () => {
+        const page = tabState.page;
+        // Arm the listener BEFORE any (re)load so an on-load response isn't missed.
+        const waitP = page.waitForResponse((resp) => {
+          try { return matcher(resp.url()); } catch { return false; }
+        }, { timeout: timeoutMs });
+        if (reload) {
+          page.reload({ waitUntil: 'commit', timeout: timeoutMs }).catch(() => {});
+        }
+        const response = await waitP;
+        const headers = response.headers();
+        const contentType = headers['content-type'] || '';
+        let body;
+        try {
+          body = /json/i.test(contentType) ? await response.json() : await response.text();
+        } catch {
+          body = await response.text().catch(() => null);
+        }
+        return { url: response.url(), status: response.status(), contentType: contentType || null, body };
+      },
+      requestTimeoutMs(timeoutMs + 5000),
+    ));
+
+    const { result, meta } = shapeEvaluateResult(captured.body, { projection, maxBytes });
+    pluginEvents.emit('tab:captured', { userId, tabId, url: captured.url, status: captured.status });
+    log('info', 'capture', {
+      reqId: req.reqId, tabId, userId, urlPattern,
+      matchedUrl: captured.url, status: captured.status, truncated: meta.truncated || undefined,
+    });
+    res.json({ ok: true, url: captured.url, status: captured.status, contentType: captured.contentType, result, ...meta });
+  } catch (err) {
+    if (isTimeoutError(err) || /timeout/i.test(err.message || '')) {
+      log('info', 'capture timeout', { reqId: req.reqId, tabId, urlPattern: req.body?.urlPattern });
+      return res.status(504).json({ error: `no response matching "${req.body?.urlPattern}" within timeout`, retryable: true });
+    }
+    log('error', 'capture failed', { reqId: req.reqId, tabId, error: err.message });
     handleRouteError(err, req, res);
   }
 });

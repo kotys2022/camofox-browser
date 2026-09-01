@@ -231,6 +231,40 @@ export const TOOL_DEFS = [
       required: ['cookiesPath'],
     },
   },
+  {
+    name: 'camofox_capture_response',
+    description:
+      "Capture the first XHR/fetch response in a tab whose URL matches a pattern, and return its body (JSON when possible). Prefer this over a hand-written fetch() in camofox_evaluate for reading a page's data API -- it reads the page's own request (cookies/headers intact) and never trips CORS. Set reload:true to re-trigger responses that fire on page load. Supports projection/maxBytes to keep large payloads out of your context.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        urlPattern: {
+          type: 'string',
+          description: 'Substring to match in the response URL, or a /regex/ compiled against the full URL.',
+        },
+        timeoutMs: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Max wait for a matching response (default 15000, capped 120000).',
+        },
+        reload: {
+          type: 'boolean',
+          description: 'Reload the page after arming the listener, to re-trigger XHRs that fire on page load.',
+        },
+        projection: {
+          type: 'string',
+          description: 'jq-like path ("data.items[0].name") to extract only a subtree of the response body.',
+        },
+        maxBytes: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Cap the returned body size in bytes; over the cap it is truncated to a preview with a marker.',
+        },
+      },
+      required: ['tabId', 'urlPattern'],
+    },
+  },
 ];
 
 /** Quick name → def lookup. */
@@ -337,6 +371,21 @@ export function buildRequest(name, args, ctx) {
         body: {
           userId,
           expression: args.expression,
+          ...(args.projection != null ? { projection: args.projection } : {}),
+          ...(args.maxBytes != null ? { maxBytes: args.maxBytes } : {}),
+        },
+      };
+    case 'camofox_capture_response':
+      return {
+        method: 'POST',
+        path: `/tabs/${args.tabId}/capture`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: {
+          userId,
+          urlPattern: args.urlPattern,
+          ...(args.timeoutMs != null ? { timeoutMs: args.timeoutMs } : {}),
+          ...(args.reload != null ? { reload: args.reload } : {}),
           ...(args.projection != null ? { projection: args.projection } : {}),
           ...(args.maxBytes != null ? { maxBytes: args.maxBytes } : {}),
         },

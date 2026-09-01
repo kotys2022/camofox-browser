@@ -24,6 +24,7 @@ import { extractPageImages } from './lib/images.js';
 import { extractDeterministic, validateSchema as validateExtractSchema } from './lib/extract.js';
 import { shapeEvaluateResult } from './lib/evaluate-projection.js';
 import { buildUrlMatcher } from './lib/capture.js';
+import { normalizeWaitFor } from './lib/wait-for.js';
 import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
@@ -1987,6 +1988,67 @@ async function navigatePage(page, url, { timeout = 30000 } = {}) {
   return response;
 }
 
+// Resolve when the page sees no network request for `quietMs`, or reject at
+// `timeoutMs`. A caller-tunable alternative to Playwright's fixed 500ms
+// networkidle, which frequently never settles on long-polling SPAs.
+function waitForNetworkQuiet(page, quietMs, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let inflight = 0;
+    let quietTimer = null;
+    let done = false;
+
+    const clearQuiet = () => { if (quietTimer) { clearTimeout(quietTimer); quietTimer = null; } };
+    const finish = (fn, arg) => {
+      if (done) return;
+      done = true;
+      clearQuiet();
+      clearTimeout(hardTimer);
+      page.off('request', onRequest);
+      page.off('requestfinished', onSettled);
+      page.off('requestfailed', onSettled);
+      fn(arg);
+    };
+    const scheduleQuiet = () => { clearQuiet(); quietTimer = setTimeout(() => finish(resolve), quietMs); };
+    const onRequest = () => { inflight += 1; clearQuiet(); };
+    const onSettled = () => { inflight = Math.max(0, inflight - 1); if (inflight === 0) scheduleQuiet(); };
+
+    const hardTimer = setTimeout(
+      () => finish(reject, new Error(`networkQuiet timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    page.on('request', onRequest);
+    page.on('requestfinished', onSettled);
+    page.on('requestfailed', onSettled);
+    scheduleQuiet(); // if already quiet, resolve after quietMs
+  });
+}
+
+// Block until a declared readiness condition holds (FIXES.md #4). Never throws
+// on timeout -- returns {matched:false, timedOut:true} so navigation still
+// succeeds and the caller can decide. `spec` is a normalizeWaitFor() output.
+async function applyWaitFor(page, spec) {
+  const started = Date.now();
+  try {
+    if (spec.selector) {
+      await page.waitForSelector(spec.selector, { state: 'visible', timeout: spec.timeoutMs });
+    } else if (spec.text) {
+      await page.waitForFunction(
+        (t) => !!(document.body && document.body.innerText && document.body.innerText.includes(t)),
+        spec.text,
+        { timeout: spec.timeoutMs, polling: 200 },
+      );
+    } else {
+      await waitForNetworkQuiet(page, spec.networkQuietMs, spec.timeoutMs);
+    }
+    return { matched: true, waitedMs: Date.now() - started };
+  } catch (err) {
+    if (isTimeoutError(err) || /timed? ?out/i.test(err.message || '')) {
+      return { matched: false, timedOut: true, waitedMs: Date.now() - started };
+    }
+    throw err;
+  }
+}
+
 
 
 async function waitForPageReady(page, options = {}) {
@@ -2791,6 +2853,17 @@ app.post('/pressure/cleanup', async (req, res) => {
  *               trace:
  *                 type: boolean
  *                 description: Enable Playwright tracing for this session (screenshots, DOM snapshots, network). Must be set on first tab creation; cannot be added to an existing session.
+ *               waitFor:
+ *                 type: object
+ *                 description: >
+ *                   Readiness condition to wait for after navigating (exactly one of
+ *                   selector/text/networkQuietMs). The response echoes {matched, waitedMs,
+ *                   timedOut?}; a readiness timeout does not fail the navigation.
+ *                 properties:
+ *                   selector: { type: string, description: Wait until this CSS selector is visible. }
+ *                   text: { type: string, description: Wait until the page text contains this string. }
+ *                   networkQuietMs: { type: integer, minimum: 1, description: Wait until no network request for this many ms. }
+ *                   timeoutMs: { type: integer, minimum: 1, description: Fallback timeout (default 15000, capped 60000). }
  *     responses:
  *       200:
  *         description: Tab created.
@@ -2824,11 +2897,18 @@ app.post('/pressure/cleanup', async (req, res) => {
  */
 app.post('/tabs', async (req, res) => {
   try {
-    const { userId, sessionKey, listItemId, url, trace } = req.body;
+    const { userId, sessionKey, listItemId, url, trace, waitFor } = req.body;
     // Accept both sessionKey (preferred) and listItemId (legacy) for backward compatibility
     const resolvedSessionKey = sessionKey || listItemId;
     if (!userId || !resolvedSessionKey) {
       return res.status(400).json({ error: 'userId and sessionKey required' });
+    }
+
+    let waitForSpec;
+    try {
+      waitForSpec = normalizeWaitFor(waitFor);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
     }
 
     // Session overflow redirect (Fly.io only) — if this machine is above its
@@ -2921,10 +3001,18 @@ app.post('/tabs', async (req, res) => {
         }
         tabState.visitedUrls.add(url);
       }
-      
+
+      let waitForResult;
+      if (url && waitForSpec) {
+        waitForResult = await applyWaitFor(tabState.page, waitForSpec);
+      }
+
       pluginEvents.emit('tab:created', { userId, tabId, page, url: page.url() });
-      log('info', 'tab created', { reqId: req.reqId, tabId, userId, sessionKey: resolvedSessionKey, url: page.url() });
-      return { tabId, url: page.url() };
+      log('info', 'tab created', {
+        reqId: req.reqId, tabId, userId, sessionKey: resolvedSessionKey, url: page.url(),
+        waitFor: waitForResult ? waitForResult.matched : undefined,
+      });
+      return { tabId, url: page.url(), ...(waitForResult ? { waitFor: waitForResult } : {}) };
     })(), requestTimeoutMs(), 'tab create');
 
     res.json(result);
@@ -2988,6 +3076,17 @@ app.post('/tabs', async (req, res) => {
  *                 type: string
  *               listItemId:
  *                 type: string
+ *               waitFor:
+ *                 type: object
+ *                 description: >
+ *                   Readiness condition to wait for after navigating (exactly one of
+ *                   selector/text/networkQuietMs). The response echoes {matched, waitedMs,
+ *                   timedOut?}; a readiness timeout does not fail the navigation.
+ *                 properties:
+ *                   selector: { type: string, description: Wait until this CSS selector is visible. }
+ *                   text: { type: string, description: Wait until the page text contains this string. }
+ *                   networkQuietMs: { type: integer, minimum: 1, description: Wait until no network request for this many ms. }
+ *                   timeoutMs: { type: integer, minimum: 1, description: Fallback timeout (default 15000, capped 60000). }
  *     responses:
  *       200:
  *         description: Navigation result with snapshot.
@@ -3012,8 +3111,15 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
   const tabId = req.params.tabId;
   
   try {
-    const { userId, url, macro, query, sessionKey, listItemId } = req.body;
+    const { userId, url, macro, query, sessionKey, listItemId, waitFor } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    let waitForSpec;
+    try {
+      waitForSpec = normalizeWaitFor(waitFor);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
 
     let session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, tabId);
@@ -3146,8 +3252,15 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
           return { ok: false, tabId, url: tabState.page.url(), refsAvailable: false, googleBlocked: true };
         }
         
+        let waitForResult;
+        if (waitForSpec) {
+          waitForResult = await applyWaitFor(tabState.page, waitForSpec);
+        }
         tabState.refs = await buildRefs(tabState.page);
-        return { ok: true, tabId, url: tabState.page.url(), refsAvailable: tabState.refs.size > 0 };
+        return {
+          ok: true, tabId, url: tabState.page.url(), refsAvailable: tabState.refs.size > 0,
+          ...(waitForResult ? { waitFor: waitForResult } : {}),
+        };
       }, requestTimeoutMs());
     })(), requestTimeoutMs(), 'navigate'));
     

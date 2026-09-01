@@ -150,6 +150,17 @@ describe('buildRequest', () => {
     expect(spec.body).toEqual({ userId: 'u1', expression: 'x', projection: 'a.b[0]', maxBytes: 2048 });
   });
 
+  test('create_tab / navigate pass waitFor through to the body (#4)', () => {
+    const wf = { selector: '#app', timeoutMs: 8000 };
+    const create = buildRequest('camofox_create_tab', { url: 'https://x.com', waitFor: wf }, CTX);
+    expect(create.body).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default', waitFor: wf });
+    const nav = buildRequest('camofox_navigate', { tabId: 't1', url: 'https://y.com', waitFor: wf }, CTX);
+    expect(nav.body.waitFor).toEqual(wf);
+    expect(nav.body.tabId).toBeUndefined(); // routing key not in body
+    // Absent when not provided (backward compatible).
+    expect(buildRequest('camofox_create_tab', { url: 'https://x.com' }, CTX).body.waitFor).toBeUndefined();
+  });
+
   test('capture_response body is { userId, urlPattern } plus provided opts (#3)', () => {
     const min = buildRequest('camofox_capture_response', { tabId: 't1', urlPattern: '/exclusive' }, CTX);
     expect(min.body).toEqual({ userId: 'u1', urlPattern: '/exclusive' });

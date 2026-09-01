@@ -437,6 +437,31 @@
                   "trace": {
                     "type": "boolean",
                     "description": "Enable Playwright tracing for this session (screenshots, DOM snapshots, network). Must be set on first tab creation; cannot be added to an existing session."
+                  },
+                  "waitFor": {
+                    "type": "object",
+                    "description": "Readiness condition to wait for after navigating (exactly one of selector/text/networkQuietMs). The response echoes {matched, waitedMs, timedOut?}; a readiness timeout does not fail the navigation.\n",
+                    "properties": {
+                      "selector": {
+                        "type": "string",
+                        "description": "Wait until this CSS selector is visible."
+                      },
+                      "text": {
+                        "type": "string",
+                        "description": "Wait until the page text contains this string."
+                      },
+                      "networkQuietMs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Wait until no network request for this many ms."
+                      },
+                      "timeoutMs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Fallback timeout (default 15000",
+                        "capped 60000).": null
+                      }
+                    }
                   }
                 }
               }
@@ -598,6 +623,31 @@
                   },
                   "listItemId": {
                     "type": "string"
+                  },
+                  "waitFor": {
+                    "type": "object",
+                    "description": "Readiness condition to wait for after navigating (exactly one of selector/text/networkQuietMs). The response echoes {matched, waitedMs, timedOut?}; a readiness timeout does not fail the navigation.\n",
+                    "properties": {
+                      "selector": {
+                        "type": "string",
+                        "description": "Wait until this CSS selector is visible."
+                      },
+                      "text": {
+                        "type": "string",
+                        "description": "Wait until the page text contains this string."
+                      },
+                      "networkQuietMs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Wait until no network request for this many ms."
+                      },
+                      "timeoutMs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Fallback timeout (default 15000",
+                        "capped 60000).": null
+                      }
+                    }
                   }
                 }
               }

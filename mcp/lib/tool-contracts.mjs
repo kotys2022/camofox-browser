@@ -63,8 +63,22 @@ const SEARCH_MACROS = [
   '@twitch_search',
 ];
 
+// Shared readiness contract for navigate/create_tab (FIXES.md #4). networkidle
+// often never settles on SPAs; declare the real ready condition instead.
+const WAIT_FOR_SCHEMA = {
+  type: 'object',
+  description:
+    'Wait for a readiness condition after navigating (exactly one of selector/text/networkQuietMs). The response reports {matched, waitedMs, timedOut?}; a timeout does not fail the navigation.',
+  properties: {
+    selector: { type: 'string', description: 'Wait until this CSS selector is visible' },
+    text: { type: 'string', description: 'Wait until the page text contains this string' },
+    networkQuietMs: { type: 'integer', minimum: 1, description: 'Wait until no network request for this many ms' },
+    timeoutMs: { type: 'integer', minimum: 1, description: 'Fallback timeout (default 15000, capped 60000)' },
+  },
+};
+
 /**
- * The 11 tools, identical schema for both hosts. Edit here and both update.
+ * The 12 tools, identical schema for both hosts. Edit here and both update.
  * @type {ToolDef[]}
  */
 export const TOOL_DEFS = [
@@ -76,6 +90,7 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         url: { type: 'string', description: 'Initial URL to navigate to' },
+        waitFor: WAIT_FOR_SCHEMA,
       },
       required: ['url'],
     },
@@ -141,6 +156,7 @@ export const TOOL_DEFS = [
           enum: SEARCH_MACROS,
         },
         query: { type: 'string', description: 'Search query (when using macro)' },
+        waitFor: WAIT_FOR_SCHEMA,
       },
       required: ['tabId'],
     },
@@ -304,7 +320,7 @@ export function buildRequest(name, args, ctx) {
         path: '/tabs',
         auth: 'accessKey',
         responseKind: 'json',
-        body: { url: args.url, userId, sessionKey },
+        body: { url: args.url, userId, sessionKey, ...(args.waitFor != null ? { waitFor: args.waitFor } : {}) },
       };
     case 'camofox_snapshot': {
       const params = new URLSearchParams({ userId, includeScreenshot: 'true' });

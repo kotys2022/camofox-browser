@@ -21,7 +21,9 @@
  *      every launch and offers no input override.
  *
  * Persisted identity layers (for full coherence across relaunch):
- *   - Browserforge Fingerprint (navigator / screen / fonts) via `fingerprint`.
+ *   - Browserforge Fingerprint (navigator / screen / fonts) via `fingerprint`,
+ *     generated under the proxy country's locale so navigator.language matches the
+ *     proxy geo (timezone/locale/geolocation/webrtc already follow it via geoip).
  *   - WebGL vendor/renderer pair via `webgl` -> launchArgs.webgl_config (else
  *     launchOptions re-samples a random GPU each launch, overriding the fingerprint).
  *   - Noise seeds (audio:seed, canvas:seed, fonts:spacing_seed, window.history.length,
@@ -58,6 +60,7 @@ import path from 'node:path';
 import { generateFingerprint } from 'camoufox-js/dist/fingerprints.js';
 import { camoufoxPath } from 'camoufox-js/dist/pkgman.js';
 import { getPossiblePairs } from 'camoufox-js/dist/webgl/sample.js';
+import { localeFromCountry } from '../../lib/geo-locale.js';
 
 const IDENTITY_VERSION = 1;
 
@@ -251,16 +254,26 @@ export async function register(app, ctx, pluginConfig = {}) {
         // First launch: generate once, persist, then reuse forever.
         if (!generating) {
           generating = (async () => {
+            // Generate the fingerprint coherent with the proxy geo: navigator.language
+            // etc. should match the country the proxy exits from (SPEC-002 §5-6.1).
+            // timezone/locale/geolocation/webrtc already follow the proxy via geoip.
+            // Only when a proxy is actually active -- without one, claiming a foreign
+            // locale would itself be incoherent with the (direct) connection.
+            const locale = launchArgs.proxy ? localeFromCountry(config?.proxy?.country) : null;
+            const fpOpts = { operatingSystems: [launchArgs.os], ...(locale ? { locales: [locale] } : {}) };
             let fingerprint;
             try {
-              fingerprint = generateFingerprint(undefined, { operatingSystems: [launchArgs.os] });
+              fingerprint = generateFingerprint(undefined, fpOpts);
             } catch {
-              fingerprint = generateFingerprint();
+              // Fall back progressively: drop locale, then os, rather than fail.
+              try { fingerprint = generateFingerprint(undefined, { operatingSystems: [launchArgs.os] }); }
+              catch { fingerprint = generateFingerprint(); }
             }
             const fresh = {
               version: IDENTITY_VERSION,
               generatedAt: new Date().toISOString(),
               os: launchArgs.os,
+              locale: locale || null,
               fingerprint,
               webgl: await sampleWebglPair(launchArgs.os),
               config: buildNoiseConfig(),
@@ -269,6 +282,8 @@ export async function register(app, ctx, pluginConfig = {}) {
             log('info', 'identity plugin: generated new identity', {
               fingerprintFile,
               os: launchArgs.os,
+              locale: locale || null,
+              proxyCountry: config?.proxy?.country || null,
             });
             return fresh;
           })().finally(() => { generating = null; });

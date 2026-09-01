@@ -129,6 +129,32 @@ describe('identity plugin', () => {
     expect(rebuilt.other).toBe(1); // unrelated keys preserved
   });
 
+  test('generates a proxy-geo-coherent locale when proxy country is set (#0/SPEC-002)', async () => {
+    const file = path.join(tmpDir, 'identity.json');
+    ctx.config.proxy = { country: 'DE' };
+    await register(mockApp, ctx, { fingerprintFile: file });
+
+    const a = makeLaunchArgs();
+    a.proxy = { server: 'http://proxy.example:8000' }; // proxy active -> locale applies
+    await events.emitAsync('browser:launchOptions', { launchArgs: a });
+
+    const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(saved.locale).toBe('de-DE');
+    expect(saved.fingerprint.navigator.language).toBe('de-DE');
+    expect(a.fingerprint.navigator.language).toBe('de-DE'); // injected coherent
+  });
+
+  test('no locale claim without an active proxy (even if country configured)', async () => {
+    const file = path.join(tmpDir, 'identity.json');
+    ctx.config.proxy = { country: 'DE' };
+    await register(mockApp, ctx, { fingerprintFile: file });
+    await events.emitAsync('browser:launchOptions', { launchArgs: makeLaunchArgs() }); // proxy: null
+
+    const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(saved.locale).toBeNull(); // no proxy -> don't fake a foreign locale
+    expect(saved.fingerprint.navigator.language).toBeTruthy();
+  });
+
   test('does not clobber a fingerprint already set by another plugin', async () => {
     await register(mockApp, ctx, { fingerprintFile: path.join(tmpDir, 'identity.json') });
     const a = makeLaunchArgs();

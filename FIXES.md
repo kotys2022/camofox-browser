@@ -58,6 +58,11 @@ launch-input override → пінується **пост-резолюшн** у х
 `CAMOU_CONFIG_*` env-чанків → override → ре-чанк). Підсумок E2E: **уся поверхня fingerprint
 (navigator/screen/fonts/WebGL/canvas) стабільна** через idle-kill relaunch (POSITIVE ідентично,
 NEGATIVE-контроль дрейфує).
+**Гео-когерентність locale (додано):** fingerprint генерується під локаль країни проксі
+(`localeFromCountry(PROXY_COUNTRY)` через вбудований ICU `Intl.Locale.maximize`, `lib/geo-locale.js`)
+→ `navigator.language`/`languages`/`Accept-Language` збігаються з гео проксі (timezone/locale/
+geolocation/webrtc і так деривуються з exit-IP через geoip щолаунч). Лише коли проксі реально
+активний (без нього чужу локаль не заявляємо). Персиститься `locale` в `identity.json`.
 Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
 (2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
 через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через

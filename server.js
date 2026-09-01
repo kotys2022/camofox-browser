@@ -25,6 +25,7 @@ import { extractDeterministic, validateSchema as validateExtractSchema } from '.
 import { shapeEvaluateResult } from './lib/evaluate-projection.js';
 import { buildUrlMatcher } from './lib/capture.js';
 import { normalizeWaitFor } from './lib/wait-for.js';
+import { redactToolArg } from './lib/redact.js';
 import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
@@ -5129,6 +5130,8 @@ app.post('/tabs/:tabId/evaluate', express.json({ limit: CONFIG.evaluateMaxBodySi
       reqId: req.reqId, tabId: req.params.tabId, userId, resultType: typeof rawResult,
       projected: meta.projection ? meta.projection.matched : undefined,
       truncated: meta.truncated || undefined,
+      // Opt-in (CAMOFOX_LOG_TOOL_ARGS): the ran expression, secret-redacted + capped (#7).
+      expression: CONFIG.logToolArgs ? redactToolArg(expression) : undefined,
     });
     res.json({ ok: true, result, ...meta });
   } catch (err) {

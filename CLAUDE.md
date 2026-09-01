@@ -59,7 +59,8 @@ Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`) на КОЖНУ �
   (докси з v1.6.0 застаріли); тепер `?screenshot=true` — аліас на обох snapshot-endpoints.
 - trace.zip осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume
   (обхід: `CAMOFOX_TRACES_DIR`) — дрібний фікс.
-- Логи `evaluate` містять `resultType`, але **НЕ сам expression** — фікс #7.
+- Логи `evaluate` — **ВИПРАВЛЕНО (#7)**: `CAMOFOX_LOG_TOOL_ARGS=1` додає `expression` у лог
+  (redacted + обрізаний, `lib/redact.js`); за замовчуванням вимкнено.
 - Дефолтний віртуальний дисплей — **ВИПРАВЛЕНО (#5)**: базовий camoufox-js 1×1, але ядро вже давало
   1280×720; тепер конфігуровано через `CAMOFOX_DISPLAY_RESOLUTION` (дефолт 1280×720). vnc перекриває
   своєю (1920×1080) → для паритету headless↔watched вирівняти обидві.

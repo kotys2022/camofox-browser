@@ -151,7 +151,12 @@ mimeType:image/png}}`; без прапорця → без зображення (
 **Доказ:** логи показують `evaluate` + `resultType`, але НЕ сам `expression`; `navigate` URL логується,
 `evaluate` args — ні. Годину дебагу з'їло саме це.
 **Код:** логер запитів навколо `evaluate`.
-**Фікс:** на debug-рівні логувати expression/args з redaction і лімітом довжини.
+**Фікс (ЗРОБЛЕНО):** опційний env `CAMOFOX_LOG_TOOL_ARGS=1` додає `expression` у лог `evaluate`,
+пропущений через `lib/redact.js` `redactToolArg`: маскує секрет-подібні пари (`password`/`token`/
+`authorization`/`bearer`/`api_key`/`cookie`/`*_key`, квотовані й ні) і обрізає до 512B (UTF-8-safe
+з маркером). Вимкнено за замовчуванням (expression може містити чутливе; `log()` рівнів не гейтить,
+тож гейт — саме env-флаг). Тести: `redact.test.js`. E2E-звірено: з флагом лог показує
+`expression:"...token=\"***\"..."`; без флага — поля нема.
 **Приорітет:** 🟡 (developer-experience при дебагу агентів).
 
 ## #8 🟢 Пул / keep-warm браузера

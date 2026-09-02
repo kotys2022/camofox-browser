@@ -55,6 +55,55 @@ This project wraps that engine in a REST API built for agents: accessibility sna
 - **Session Tracing** - opt-in per-session Playwright trace capture (screenshots + DOM snapshots + network) with API endpoints to list, fetch, and delete trace zips
 - **Telemetry** - automatic [anonymized crash/hang telemetry](lib/reporter.js#L28-L290) via GitHub Issues. Identifies which sites cause failures and common failure patterns. Private domains are HMAC-hashed, paths/params stripped, tokens/IPs redacted. Opt-out with `CAMOFOX_CRASH_REPORT_ENABLED=false`.
 
+## Capabilities
+
+A full rundown of what the server can do. Items marked **(fork)** are additions or changes over upstream jo-inc/camofox-browser v1.14.0 — see [FIXES.md](FIXES.md) and [FORK.md](FORK.md) for rationale and internals.
+
+### Anti-detection & identity
+- **C++-level fingerprint spoofing** via Camoufox — navigator, WebGL vendor/renderer, AudioContext, screen geometry and WebRTC are patched inside the engine, before any JavaScript can observe them. No JS shims, no wrapper tells.
+- **Persistent fingerprint identity (fork)** — an `identity.json` is generated once per profile and re-injected on **every** launch (navigator / screen / fonts / WebGL pair + audio/canvas noise seeds + `canvas:aaOffset`), so a profile keeps the same identity across idle-kill, crash or container restart. Without it Camoufox re-randomizes each launch and platforms invalidate the session. Enable with `ENABLE_IDENTITY=1`; path via `CAMOFOX_FINGERPRINT_FILE`.
+- **Proxy-coherent locale (fork)** — `navigator.language` is generated from `PROXY_COUNTRY` (ICU, no network) so the fingerprint's language matches the proxy geo; timezone, geolocation and WebRTC already follow the exit IP through GeoIP.
+
+### Networking & proxy
+- **Proxy + GeoIP** — route traffic through residential or datacenter proxies; timezone, locale, geolocation and WebRTC are auto-derived from the proxy exit IP each launch.
+- **Single-string proxy import (fork)** — `PROXY_URL=scheme://user:pass@host:port` instead of five discrete vars; supports `http` / `https` / `socks5`; discrete `PROXY_*` still override. Feeds both round-robin and backconnect strategies.
+- **Backconnect & round-robin strategies** — decodo / generic providers with sticky-session usernames, or a fixed port pool with per-context rotation.
+
+### Agent-friendly DOM
+- **Accessibility snapshots** — ~90% smaller than raw HTML, with stable `e1` / `e2` / `e3` element refs for reliable click / type.
+- **`evaluate` with result projection & byte caps (fork)** — run JS in the page and project or cap the result so a huge return value never blows the agent's context window; per-call `maxBytes` or default `CAMOFOX_EVALUATE_MAX_RESULT_BYTES`.
+- **SPA readiness contract (fork)** — `waitFor` takes exactly one of `selector` / `text` / `networkQuietMs` with a capped timeout, so navigation waits until the app is actually ready instead of racing.
+- **First-class XHR/response capture (fork)** — capture a page's XHR/fetch responses as a primitive, rather than scraping rendered DOM.
+- **Structured extract** — `POST /tabs/:id/extract` maps a JSON Schema to snapshot refs via `x-ref`.
+- **Large-page handling** — automatic snapshot truncation with offset-based pagination.
+- **DOM image extraction** — list `<img>` src/alt, optionally returning inline data URLs.
+
+### Sessions, auth & files
+- **Session isolation** — separate cookies/storage per user (`newContext` per userId).
+- **Cookie persistence & import** — persisted `storage-state.json` per profile; inject Netscape-format cookie files for authenticated browsing.
+- **File upload** — attach files from a configured directory without a native OS dialog.
+- **VNC interactive login** — log into sites visually via noVNC, then export the storage state for agent reuse.
+
+### Performance & operations
+- **Lazy launch + idle shutdown** — ~40MB idle footprint; designed to share a box (Raspberry Pi, $5 VPS, shared infra).
+- **Browser keep-warm (fork)** — `BROWSER_IDLE_TIMEOUT_MS=0` disables idle shutdown and eagerly re-warms the browser after an unexpected close, removing cold-start latency under load.
+- **Env-gated plugins (fork)** — enable any plugin with `ENABLE_<PLUGIN>=1`, no config edit required.
+- **Configurable virtual display (fork)** — `CAMOFOX_DISPLAY_RESOLUTION` aligns a headless run with a VNC-watched run for screenshot parity.
+- **Tool-arg observability (fork)** — opt-in `CAMOFOX_LOG_TOOL_ARGS` logs the evaluate expression with secret redaction and a length cap.
+- **Session tracing** — opt-in per-session Playwright traces (screenshots + DOM + network) with list/fetch/delete endpoints; a default-path warning (fork) prevents silent trace loss on `--rm` without a volume.
+- **Structured logging & telemetry** — JSON log lines with request IDs; opt-out anonymized crash/hang telemetry that files GitHub Issues for failing sites.
+
+### Media & search
+- **YouTube transcripts** — extract captions via yt-dlp, no API key needed.
+- **Search macros** — `@google_search`, `@youtube_search`, `@amazon_search`, `@reddit_subreddit`, and more.
+- **Snapshot screenshots** — base64 PNG alongside the accessibility snapshot, or a REST snapshot **without** the image (fork) when only the tree is needed.
+- **Download capture** — capture browser downloads and fetch them via API (optional inline base64).
+
+### Interfaces & deployment
+- **REST + MCP** — a REST API plus an MCP/plugin adapter (OpenClaw).
+- **OpenAPI docs** — auto-generated `/openapi.json` and interactive `/docs`.
+- **Deploy anywhere** — Docker, Fly.io, Railway.
+
 ## Optional Dependencies
 
 | Dependency | Purpose | Install |
@@ -749,6 +798,14 @@ npm run test:debug    # with server output
 ```bash
 npm install @askjo/camofox-browser
 ```
+
+## Credits
+
+Standing on the shoulders of:
+
+- **[Camoufox](https://camoufox.com)** by **[daijro](https://github.com/daijro)** — a Firefox fork that spoofs the fingerprint surface (navigator, WebGL, AudioContext, screen geometry, WebRTC) at the **C++ implementation level**, before any JavaScript runs. This project would not exist without it. If it saves you work, [support daijro](https://camoufox.com/about/).
+- **[jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser)** — the upstream REST/MCP server this repository forks (v1.14.0).
+- **[OpenClaw](https://openclaw.ai)** — the open-source AI-agent framework the MCP/plugin adapter targets.
 
 ## Crypto Scam Warning
 

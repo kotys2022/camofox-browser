@@ -684,6 +684,7 @@ const BROWSER_IDLE_TIMEOUT_MS = CONFIG.browserIdleTimeoutMs;
 // enables proactive re-warm after an unexpected close.
 const BROWSER_KEEP_WARM = isKeepWarm(BROWSER_IDLE_TIMEOUT_MS);
 let browserIdleTimer = null;
+let _tracesEphemeralWarned = false; // warn once if tracing to the default ephemeral dir
 let browserLaunchPromise = null;
 let browserWarmRetryTimer = null;
 
@@ -1398,6 +1399,13 @@ async function getSession(userId, { trace = false } = {}) {
 
       let tracePath = null;
       if (trace) {
+        if (!CONFIG.tracesDirExplicit && !_tracesEphemeralWarned) {
+          _tracesEphemeralWarned = true;
+          log('warn', 'tracing to default (ephemeral) dir; trace.zip is lost on container --rm', {
+            tracesDir: CONFIG.tracesDir,
+            remediation: 'set CAMOFOX_TRACES_DIR to a mounted volume to persist traces',
+          });
+        }
         const traceDir = ensureTracesDir(CONFIG.tracesDir, key);
         tracePath = tracePathFor(CONFIG.tracesDir, key, makeTraceFilename());
         try {

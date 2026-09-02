@@ -183,7 +183,9 @@ off (короткий idle) → закривається; kill camoufox → ав
 
 ## Дрібне
 - **trace.zip** осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume.
-  Обхід: `CAMOFOX_TRACES_DIR`. Фікс: дефолт на монтований шлях або warn при відсутності volume.
+  Обхід: `CAMOFOX_TRACES_DIR`. **ЗРОБЛЕНО:** одноразовий warn при першому трейсі, якщо
+  `CAMOFOX_TRACES_DIR` не заданий явно (дефолт-шлях ефемерний) — з remediation «set CAMOFOX_TRACES_DIR
+  to a mounted volume». `config.js:tracesDirExplicit`. E2E-звірено: дефолт→warn; explicit+mount→тиша.
 
 ---
 

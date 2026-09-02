@@ -535,6 +535,8 @@ Browser behavior can be tuned in `camofox.config.json`:
 | `MAX_CONCURRENT_PER_USER` | Concurrent request cap per user | `3` |
 | `MAX_OLD_SPACE_SIZE` | Node.js V8 heap limit (MB) | `128` |
 | `PROXY_URL` | Full proxy as one string `scheme://user:pass@host:port` (`http`/`https`/`socks5`); discrete `PROXY_*` override it | - |
+| `PROXY_URLS` | Pool of distinct proxy URLs (newline/comma separated); enables `list` mode, rotated per session. Use same-country entries | - |
+| `CAMOFOX_PROXY_LIST_FILE` | File with one proxy URL per line (`#` comments); same as `PROXY_URLS` | - |
 | `PROXY_STRATEGY` | Proxy mode: `backconnect` (rotating sticky sessions) or blank (single endpoint) | - |
 | `PROXY_PROVIDER` | Provider name for session format (e.g. `decodo`) | `decodo` |
 | `PROXY_HOST` | Proxy hostname or IP (simple mode) | - |

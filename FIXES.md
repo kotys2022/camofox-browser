@@ -171,6 +171,27 @@ Unit: `tests/unit/proxyUrl.test.js` (чиста функція, зелена н�
 tab → `ipify` через проксі.
 **Приорітет:** 🟢 (ергономіка конфіга).
 
+## #10 🟡 Пул проксі зі списку (`PROXY_URLS` / `CAMOFOX_PROXY_LIST_FILE`)
+**Симптом:** `round_robin` пулить лише один хост із кількома портами, backconnect — один шлюз.
+Не було способу дати **список різних** `scheme://user:pass@host:port` і ротувати їх per-session
+(масовий парсинг з IP-різноманіттям).
+**Фікс (ЗРОБЛЕНО):** нова мода **`list`** у `createProxyPool` (`lib/proxy.js`), що активується коли
+задано `PROXY_URLS` (розділювач — новий рядок/кома) або `CAMOFOX_PROXY_LIST_FILE` (по URL на рядок,
+`#`-коментарі). Особливості:
+- `parseProxyList` (`lib/config.js`) парсить кожен запис через `parseProxyUrl`, дедуп за
+  `scheme://host:port`, битий/непідтримуваний рядок пропускається, відсутній файл ігнорується.
+- **`getNext`** ротує пул per-context (userId) — сідає на наявний seam `server.js`; **`getLaunchProxy`**
+  ротує по спробах (`launchRetries=min(N,10)`), тож мертвий endpoint ретраїться наступним.
+- **Одна країна на пул** (geoip launch-bound; змішування країн → неузгоджені tz/locale для
+  off-country контекстів).
+- Явна `PROXY_STRATEGY=backconnect` має пріоритет над авто-`list`.
+- **Заодно фікс латентного бага:** guard дефолтної локалі в `server.js` був `!CONFIG.proxy.host`,
+  що для backconnect/list (де `host` порожній) помилково пінив en-US/LA поверх geoip → змінено на
+  `!proxyPool`.
+Unit: `tests/unit/proxyList.test.js` (пул + loadConfig, зелені на хості). E2E: `PROXY_URLS=...` →
+`mode:list`, tab → exit-IP проксі, tz з geoip (Ljubljana), per-context proxy assigned.
+**Приорітет:** 🟡 (фундамент для proxy-менеджера / масового парсингу).
+
 ## Дрібне
 - **trace.zip** осідає в дефолтному `~/.camofox/traces/` → губиться на `--rm` без volume.
   **ЗРОБЛЕНО:** одноразовий warn при першому трейсі, якщо `CAMOFOX_TRACES_DIR` не заданий явно

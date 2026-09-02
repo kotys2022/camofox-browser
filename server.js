@@ -668,8 +668,12 @@ const proxyPool = createProxyPool(CONFIG.proxy);
 if (proxyPool) {
   log('info', 'proxy pool created', {
     mode: proxyPool.mode,
-    host: proxyPool.canRotateSessions ? CONFIG.proxy.backconnectHost : CONFIG.proxy.host,
-    ports: proxyPool.canRotateSessions ? [CONFIG.proxy.backconnectPort] : CONFIG.proxy.ports,
+    host: proxyPool.mode === 'list'
+      ? undefined
+      : (proxyPool.canRotateSessions ? CONFIG.proxy.backconnectHost : CONFIG.proxy.host),
+    ports: proxyPool.mode === 'list'
+      ? undefined
+      : (proxyPool.canRotateSessions ? [CONFIG.proxy.backconnectPort] : CONFIG.proxy.ports),
     poolSize: proxyPool.size,
     country: CONFIG.proxy.country || null,
     state: CONFIG.proxy.state || null,
@@ -1377,9 +1381,12 @@ async function getSession(userId, { trace = false } = {}) {
         viewport: null,
         permissions: ['geolocation'],
       };
-      // When geoip is active (proxy configured), camoufox auto-configures
-      // locale/timezone/geolocation from the proxy IP. Without proxy, use defaults.
-      if (!CONFIG.proxy.host) {
+      // When geoip is active (any proxy pool: single/backconnect/list), camoufox
+      // auto-configures locale/timezone/geolocation from the proxy IP. Only force
+      // defaults when there is genuinely no proxy -- checking CONFIG.proxy.host
+      // alone missed backconnect (backconnectHost) and list (urls) modes, which
+      // have no `host` yet still proxy, wrongly pinning en-US/LA over geoip.
+      if (!proxyPool) {
         contextOptions.locale = 'en-US';
         contextOptions.timezoneId = 'America/Los_Angeles';
         contextOptions.geolocation = { latitude: 37.7749, longitude: -122.4194 };

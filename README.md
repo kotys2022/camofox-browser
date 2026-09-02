@@ -799,14 +799,6 @@ npm run test:debug    # with server output
 npm install @askjo/camofox-browser
 ```
 
-## Credits
-
-Standing on the shoulders of:
-
-- **[Camoufox](https://camoufox.com)** by **[daijro](https://github.com/daijro)** — a Firefox fork that spoofs the fingerprint surface (navigator, WebGL, AudioContext, screen geometry, WebRTC) at the **C++ implementation level**, before any JavaScript runs. This project would not exist without it. If it saves you work, [support daijro](https://camoufox.com/about/).
-- **[jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser)** — the upstream REST/MCP server this repository forks (v1.14.0).
-- **[OpenClaw](https://openclaw.ai)** — the open-source AI-agent framework the MCP/plugin adapter targets.
-
 ## Crypto Scam Warning
 
 Sketchy people are doing sketchy things with crypto tokens named "Camofox" now that this project is getting attention. **Camofox is not a crypto project and will never be one.** Any token, coin, or NFT using the Camofox name has nothing to do with us.

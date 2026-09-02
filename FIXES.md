@@ -149,6 +149,22 @@ E2E: keep-warm=on → браузер лишається connected після dro
 → авто re-warm без запиту.
 **Приорітет:** 🟢 (продуктивність під навантаженням).
 
+## #9 🟢 Імпорт проксі одним рядком (`PROXY_URL`)
+**Симптом:** провайдери дають готовий рядок `scheme://user:pass@host:port`, а движок читав лише
+розбиті `PROXY_HOST`/`PROXY_PORT`/`PROXY_USERNAME`/`PROXY_PASSWORD` — доводилось бити URL руками.
+**Фікс (ЗРОБЛЕНО):** `PROXY_URL` парситься нативним `new URL()` у `lib/config.js`
+(`parseProxyUrl`) і наповнює discrete-поля. Особливості:
+- **Precedence:** явні `PROXY_*` перекривають розібране з URL — URL це зручний дефолт, який можна
+  точково доповнити (напр. лишити URL, але задати `PROXY_COUNTRY`).
+- **Обидві стратегії:** `round_robin` (host/port) і `backconnect` (той самий URL → backconnectHost/Port).
+- **Схема:** `http`/`https`/`socks5(h)`/`socks4` пробрасується у `server`-URL проксі
+  (`lib/proxy.js`); discrete-конфіги лишаються на дефолті `http`.
+- **Стійкість:** битий/непідтримуваний URL → `{}` і фолбек на discrete-змінні, launch не падає.
+- Креденшели percent-декодуються.
+Unit: `tests/unit/proxyUrl.test.js` (чиста функція, зелена на хості). E2E: `PROXY_URL=...` →
+tab → `ipify` через проксі.
+**Приорітет:** 🟢 (ергономіка конфіга).
+
 ## Дрібне
 - **trace.zip** осідає в дефолтному `~/.camofox/traces/` → губиться на `--rm` без volume.
   **ЗРОБЛЕНО:** одноразовий warn при першому трейсі, якщо `CAMOFOX_TRACES_DIR` не заданий явно

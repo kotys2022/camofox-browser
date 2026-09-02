@@ -68,6 +68,7 @@ CI-паритетному образі (`Dockerfile.test`): **75 suites / 912 т
 | `CAMOFOX_DISPLAY_RESOLUTION` | `1280x720x24` | роздільність Xvfb |
 | `CAMOFOX_EVALUATE_MAX_RESULT_BYTES` | `0` (без ліміту) | дефолт-cap результату evaluate |
 | `CAMOFOX_LOG_TOOL_ARGS` | off | лог evaluate expression (redacted) |
+| `PROXY_URL` | — | проксі одним рядком `scheme://user:pass@host:port`; discrete `PROXY_*` перекривають |
 
 Апстрім-код не чіпався там, де можна було зробити зміну плагіном або хуком; ядро
 правилось мінімально (новий пре-хук `browser:launchOptions`, кілька опційних

@@ -129,7 +129,7 @@ describe('identity plugin', () => {
     expect(rebuilt.other).toBe(1); // unrelated keys preserved
   });
 
-  test('generates a proxy-geo-coherent locale when proxy country is set (#0/SPEC-002)', async () => {
+  test('generates a proxy-geo-coherent locale when proxy country is set (#0)', async () => {
     const file = path.join(tmpDir, 'identity.json');
     ctx.config.proxy = { country: 'DE' };
     await register(mockApp, ctx, { fingerprintFile: file });

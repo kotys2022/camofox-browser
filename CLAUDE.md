@@ -1,75 +1,56 @@
-# my-camofox-browser — контекст для фіксів
+# my-camofox-browser — нотатки розробника
 
 ## Що це
-Робоча копія/форк **camofox-browser** для внесення виправлень. Мета — полагодити ергономіку
-й дефолти, що виявились слабким місцем при реальному використанні (див. `FIXES.md`).
+Форк **[jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser)** (upstream **v1.14.0**)
+з набором виправлень ергономіки й дефолтів під реальне агентне навантаження
+(data-екстракція через MCP). Повний список змін — у **`FIXES.md`**, огляд форку — у **`FORK.md`**.
 
-> ✅ Вихідники **склоновані** з `github.com/jo-inc/camofox-browser` (upstream **v1.14.0**;
-> JS-залежності встановлено `npm install --ignore-scripts` — бінарник браузера НЕ тягли,
-> реальний запуск через Docker-образ `camofox-browser:local`). Бінарник за потреби:
-> `npm run fetch-bin`.
-> ⚠️ **Дрейф версій:** docs у `BotoFerma/docs` аналізували образ **v1.6.0**; код тепер
-> **v1.14.0** — рядкові посилання звіряти з реальним деревом (для #0/#12 вже звірено).
+> JS-залежності: `npm install --ignore-scripts` (бінарник браузера не тягнеться; за потреби
+> `npm run fetch-bin`). Реальний запуск — через Docker-образ (`make build` → `camofox-browser:local`).
 
-## Звідки зауваження
-Виявлено під час побудови **CryptoRank Extraction Harness** (`/srv/work/testCamofox`) —
-дослідницький harness, що драйвить camofox через Hermes MCP-актора для екстракції vesting-даних
-з cryptorank.io (replay HAR-fixtures, вимір skill-lift LLM на masked-даних). Тобто зауваження —
-з живого агентного навантаження, не з рев'ю коду.
-
-Пов'язано з **BotoFerma** (`/srv/work/BotoFerma/docs`) — платформа автоматизації, що вже
-тримає camofox у пулі (`SPEC-camofox-pool-pattern-A.md`, `DECISION-session-liveness.md`,
-`DECISION-state-persistence.md`). Фікс #8 (пул/keep-warm) прямо стосується того SPEC.
-
-## Образ і як він працює (перевірено інспекцією `camofox-browser:local`)
-- Образ **2.41GB**, node **v22**, HTTP-сервер камофокса слухає **9377** усередині контейнера.
+## Образ і як він працює
+- node **v22**, HTTP-сервер camoufox слухає **9377** усередині контейнера.
 - Стек: Node-сервер + **camoufox** (Firefox-форк) під **Xvfb** віртуальним дисплеєм; REST API + MCP.
-- **Плагіни:** `/app/plugins/{persistence,vnc,youtube}` + монтований `cr-fixture` (з harness).
-  Вантажаться ЛИШЕ ті, що є в `camofox.config.json` `plugins{}`.
-- **Конфіг:** `/app/camofox.config.json` (монтується). Приклад робочого (replay+vnc):
-  `plugins: {cr-fixture:{enabled}, persistence:{off}, youtube:{off}, vnc:{on|off}}`,
-  `newPageTimeoutMs: 10000`, `interactive.mode: "off"`.
-- **VNC (works):** `ENABLE_VNC=1` + `camofox.config.json` vnc.enabled → плагін перекриває
-  Xvfb на **1920×1080**, піднімає x11vnc(:5900) + noVNC/websockify(:6080).
-  Перегляд: `http://localhost:6080/vnc.html`. Логи: `vnc plugin enabled`, `vnc watcher started`.
+- **Плагіни:** `plugins/{identity,persistence,vnc,youtube}`. Вантажаться ті, що є в
+  `camofox.config.json` `plugins{}`, АБО ввімкнені env-змінною `ENABLE_<PLUGIN>=1` (див. #1).
+- **VNC:** `ENABLE_VNC=1` + `vnc.enabled` → плагін перекриває Xvfb на **1920×1080**, піднімає
+  x11vnc(:5900) + noVNC/websockify(:6080). Перегляд: `http://localhost:6080/vnc.html`.
 
-## Як тестувати (патерн із harness)
+## Як тестувати
+CI-паритетний прогін усіх сьютів (потребує реального бінарника) — через `Dockerfile.test`:
 ```bash
-docker run -d --rm --name cfx --shm-size=2g -p 127.0.0.1:9380:9377 \
-  -v <cfg>.json:/app/camofox.config.json:ro \
-  -v <fixture>:/fixtures:ro \
-  -e CR_FIXTURE_MODE=replay -e CR_FIXTURE_HAR=/fixtures/page.har \
-  -e CAMOFOX_CRASH_REPORT_ENABLED=false camofox-browser:local
-# health: GET :9380/health → {"ok":true,...,"browserConnected","activeTabs"}
-# tab:    POST :9380/tabs {userId,sessionKey,url}
-# eval:   POST :9380/tabs/<tabId>/evaluate {userId,expression}
-# kill:   DELETE :9380/sessions/<userId>
+docker build -f Dockerfile.test -t camofox-browser:test .
+docker run --rm --shm-size=2g camofox-browser:test tests/unit
 ```
-Прод-камофокс BotoFerma/harness тримає **:9377** — тестові контейнери гнати на **9378-9380**.
-Cold browser start ≈ **10с** (`browser pre-warmed ~9963ms`). **keep-warm (#8):**
-`BROWSER_IDLE_TIMEOUT_MS=0` → браузер не idle-закривається + eager re-warm після crash
-(`lib/keep-warm.js`); дефолт 5хв idle без змін. Пул контейнерів — окремо, NixOS (pool-SPEC).
+Швидкий ручний драйв движка:
+```bash
+docker run -d --rm --name cfx --shm-size=2g -p 127.0.0.1:9378:9377 \
+  -e CAMOFOX_CRASH_REPORT_ENABLED=false camofox-browser:local
+# health: GET :9378/health → {"ok":true,...,"browserConnected","activeTabs"}
+# tab:    POST :9378/tabs {userId,sessionKey,url}
+# eval:   POST :9378/tabs/<tabId>/evaluate {userId,expression}
+# kill:   DELETE :9378/sessions/<userId>
+```
+Cold browser start ≈ **10с** (`browser pre-warmed`). Unit-сьюти, що спавнять сервер, потребують
+бінарника → зелені лише в контейнері (`Dockerfile.test`).
 
-## Ключові архітектурні факти (перевірені, для орієнтації)
-- `config.js:81` — vnc mode allowlist `['off','desktop','novnc','auto']`.
-- `config.js` `pluginEnv` — **ВИПРАВЛЕНО (#1)**: раніше хардкодився лише на `ENABLE_VNC` (тому
-  `plugin.json→enableEnvVar` був мертвий для всіх, крім vnc); тепер віддає повний `process.env`,
-  тож `ENABLE_<PLUGIN>=1` вмикає будь-який плагін. `loadPlugins` (`lib/plugins.js:156`) читає gate.
-- `config.js:182,186,187` — ENABLE_VNC / VNC_PORT / NOVNC_PORT.
-- `/app/plugins/vnc/`: `index.js, spawn.js, vnc-launcher.js, vnc-watcher.sh, plugin.json(enableEnvVar:ENABLE_VNC)`.
-- REST snapshot image — **ВИПРАВЛЕНО (#6)**: `?includeScreenshot=true` уже повертав base64 PNG
-  (докси з v1.6.0 застаріли); тепер `?screenshot=true` — аліас на обох snapshot-endpoints.
-- trace.zip осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume
-  (обхід: `CAMOFOX_TRACES_DIR`) — дрібний фікс.
-- Логи `evaluate` — **ВИПРАВЛЕНО (#7)**: `CAMOFOX_LOG_TOOL_ARGS=1` додає `expression` у лог
-  (redacted + обрізаний, `lib/redact.js`); за замовчуванням вимкнено.
-- Дефолтний віртуальний дисплей — **ВИПРАВЛЕНО (#5)**: базовий camoufox-js 1×1, але ядро вже давало
-  1280×720; тепер конфігуровано через `CAMOFOX_DISPLAY_RESOLUTION` (дефолт 1280×720). vnc перекриває
-  своєю (1920×1080) → для паритету headless↔watched вирівняти обидві.
+## Ключові архітектурні факти
+- `browser` — **singleton на контейнер** → один fingerprint на весь контейнер (сесії =
+  `newContext` per userId). Для N паралельних профілів → N контейнерів.
+- Хук ядра **`browser:launchOptions`** (пре-резолюшн) — seam для інжекту `fingerprint`/`config`/
+  `webgl_config`; `browser:launching` (пост-резолюшн) — для правки вже-серіалізованих
+  `CAMOU_CONFIG_*` env-чанків (напр. canvas-pin). Обидва — мутуючі, за посиланням.
+- `geoip=true` (коли є проксі) деривує timezone/locale/geolocation/webrtc з exit-IP проксі
+  щолаунч. `navigator.language` — з fingerprint (фіксований), тому генерується під `PROXY_COUNTRY`.
+- `pluginEnv = process.env` (#1) → `ENABLE_<PLUGIN>=1` вмикає будь-який плагін.
+- Persist: `identity.json` (fingerprint) + `storage-state.json` (куки) у `profileDir`
+  (`~/.camofox/profiles`, ключ кук — `sha256(userId)`).
 
-## Середовище
-NixOS, shell **fish** (без heredoc `<<`), python `/run/current-system/sw/bin/python3`, docker 29.5.2.
+## Нові env-прапорці форку
+`ENABLE_IDENTITY`, `CAMOFOX_FINGERPRINT_FILE`, `BROWSER_IDLE_TIMEOUT_MS=0` (keep-warm),
+`CAMOFOX_DISPLAY_RESOLUTION`, `CAMOFOX_EVALUATE_MAX_RESULT_BYTES`, `CAMOFOX_LOG_TOOL_ARGS`,
+`CAMOFOX_TRACES_DIR`. Деталі — `FORK.md`.
 
-## Далі
-Список змін із доказами, місцями в коді й пріоритетом — у **`FIXES.md`**. Топ-3 за впливом:
-`evaluate`-проєкція (#2), «capture XHR» тул (#3), `waitFor`-контракт готовності (#4).
+## Середовище розробки
+Тести — native ESM (`NODE_OPTIONS=--experimental-vm-modules`), `jest.config.cjs` `transform:{}`.
+Запуск jest — з кореня репо.

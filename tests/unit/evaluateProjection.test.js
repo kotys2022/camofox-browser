@@ -63,7 +63,7 @@ describe('capResultBytes', () => {
 });
 
 describe('shapeEvaluateResult', () => {
-  const result = { pageProps: { vestingInfo: { pct: 19.4, huge: 'z'.repeat(10000) } } };
+  const result = { pageProps: { details: { pct: 19.4, huge: 'z'.repeat(10000) } } };
 
   test('no opts -> unchanged, empty meta', () => {
     expect(shapeEvaluateResult(result, {})).toEqual({ result, meta: {} });
@@ -71,9 +71,9 @@ describe('shapeEvaluateResult', () => {
   });
 
   test('projection extracts only the subtree', () => {
-    const out = shapeEvaluateResult(result, { projection: 'pageProps.vestingInfo.pct' });
+    const out = shapeEvaluateResult(result, { projection: 'pageProps.details.pct' });
     expect(out.result).toBe(19.4);
-    expect(out.meta.projection).toEqual({ path: 'pageProps.vestingInfo.pct', matched: true });
+    expect(out.meta.projection).toEqual({ path: 'pageProps.details.pct', matched: true });
     expect(out.meta.truncated).toBeUndefined();
   });
 
@@ -92,7 +92,7 @@ describe('shapeEvaluateResult', () => {
   });
 
   test('projection then cap compose; small projected result is not truncated', () => {
-    const out = shapeEvaluateResult(result, { projection: 'pageProps.vestingInfo.pct', maxBytes: 100 });
+    const out = shapeEvaluateResult(result, { projection: 'pageProps.details.pct', maxBytes: 100 });
     expect(out.result).toBe(19.4);
     expect(out.meta.truncated).toBeUndefined();
   });

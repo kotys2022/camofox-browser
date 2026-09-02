@@ -4,7 +4,7 @@
  * Persists and re-injects a stable browser fingerprint across every launch so a
  * profile keeps the same identity after idle-kill, crash, or container restart.
  *
- * Why this exists (see FIXES.md #0 / ADR Open Question #12):
+ * Why this exists (see FIXES.md #0):
  *   camoufox-js generates a *fresh* random fingerprint on every firefox.launch()
  *   unless launchOptions() is given an explicit `fingerprint` (and matching noise
  *   `config`). With BROWSER_IDLE_TIMEOUT_MS the browser relaunches *inside* a live
@@ -50,7 +50,7 @@
  *   CAMOFOX_FINGERPRINT_FILE=/root/.camofox/slot/identity.json
  *
  * generate (default: true): self-generate an identity.json on first launch if the
- * file is missing (SPEC-002 variant A). Set false to require an externally
+ * file is missing (self-generate). Set false to require an externally
  * provisioned file (variant B); with no file the launch falls back to camoufox's
  * per-launch random fingerprint (current upstream behavior).
  */
@@ -255,7 +255,7 @@ export async function register(app, ctx, pluginConfig = {}) {
         if (!generating) {
           generating = (async () => {
             // Generate the fingerprint coherent with the proxy geo: navigator.language
-            // etc. should match the country the proxy exits from (SPEC-002 §5-6.1).
+            // etc. should match the country the proxy exits from.
             // timezone/locale/geolocation/webrtc already follow the proxy via geoip.
             // Only when a proxy is actually active -- without one, claiming a foreign
             // locale would itself be incoherent with the (direct) connection.

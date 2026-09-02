@@ -1,5 +1,5 @@
 /**
- * Tests for country -> locale mapping (FIXES.md #0 / SPEC-002). Pure, ICU-based.
+ * Tests for country -> locale mapping (FIXES.md #0). Pure, ICU-based.
  */
 import { describe, test, expect } from '@jest/globals';
 import { localeFromCountry } from '../../lib/geo-locale.js';

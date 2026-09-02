@@ -18,8 +18,8 @@ describe('normalizeWaitFor', () => {
   });
 
   test('text spec with custom timeout', () => {
-    expect(normalizeWaitFor({ text: 'Vesting', timeoutMs: 5000 })).toEqual({
-      text: 'Vesting',
+    expect(normalizeWaitFor({ text: 'Dashboard', timeoutMs: 5000 })).toEqual({
+      text: 'Dashboard',
       timeoutMs: 5000,
     });
   });

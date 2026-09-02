@@ -42,3 +42,8 @@ fly.toml
 # Test artifacts
 test-results/
 playwright-report/
+
+# local agent/dev tooling (not part of the engine)
+.mcp.json
+.serena/
+.claude/

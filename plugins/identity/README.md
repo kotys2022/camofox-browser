@@ -3,7 +3,7 @@
 Persists and re-injects a **stable browser fingerprint** across every launch, so a
 profile keeps the same identity after idle-kill, crash, or container restart.
 
-Implements FIXES.md **#0** / ADR Open Question **#12**.
+Implements FIXES.md **#0**.
 
 ## The problem
 
@@ -51,7 +51,7 @@ The plugin uses **two** hooks:
 
 **Not persisted** (intentionally): IP-exact fields — `webrtc:ipv4`, precise
 geolocation. Left empty so `geoip=true` derives them from the current proxy IP each
-launch, staying coherent across sticky-IP changes within the same geo (SPEC-002 §6.1).
+launch, staying coherent across sticky-IP changes within the same geo.
 
 The full fingerprint surface — navigator / screen / fonts / WebGL / canvas — is
 verified stable across an idle-kill relaunch by `scripts/verify-identity-e2e.sh`.
@@ -77,7 +77,7 @@ The plugin can also be activated by env var alone (FIXES.md **#1**): set
 If `fingerprintFile` is omitted it defaults to `<profileDir>/identity.json`.
 
 - **`generate`** (default `true`): self-generate `identity.json` on first launch if
-  missing (SPEC-002 variant A). Set `false` to require an externally provisioned
+  missing (self-generate). Set `false` to require an externally provisioned
   file (variant B); with no file the launch falls back to camoufox's per-launch
   random fingerprint (upstream behavior).
 

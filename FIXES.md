@@ -1,201 +1,163 @@
-# camofox-browser — список фіксів (за спаданням впливу)
+# camofox-browser — список змін (за спаданням впливу)
 
-Джерело: реальне агентне навантаження з CryptoRank Extraction Harness (`/srv/work/testCamofox`),
-2026-09-01. Кожен пункт: **симптом → доказ → місце в коді (образ) → пропозиція → пріоритет**.
-Місця в коді — шляхи всередині `camofox-browser:local` (сорсу тут ще нема, звірити після клону).
+Виправлення ергономіки й дефолтів, виявлені під реальним агентним навантаженням
+(data-екстракція через MCP), а не з рев'ю коду. Кожен пункт: **симптом → доказ →
+місце в коді → рішення → пріоритет**. База — upstream **v1.14.0**.
 
 Легенда пріоритету: 🔴 high (б'є по швидкості/надійності агента) · 🟡 medium · 🟢 nice-to-have.
 
-> **Нумерація:** `#1–#8` — із harness-навантаження (ергономіка). `#0` — движкова
-> зміна ідентичності (ADR Open Question **#12**), перенесена сюди з
-> `BotoFerma/docs` (ADR §36 #12, §3; `SPEC-002-profile-provisioning`;
-> `SPEC-camofox-pool-pattern-A` §6). SPEC-и трактують її як зовнішню залежність
-> «движок (#12, окремо)» — а цей репозиторій і є місцем, де її роблять.
+> **Нумерація:** `#1–#8` — ергономіка з агентного навантаження. `#0` — несуча движкова
+> зміна ідентичності (persist+inject fingerprint), фундамент для решти.
 
 ---
 
-## #0 🔴 Персист + inject fingerprint (`identity.json`) при КОЖНОМУ launch — Open Question #12
+## #0 🔴 Персист + inject fingerprint (`identity.json`) при КОЖНОМУ launch
 **Симптом:** профіль не можна завантажити з його ідентифікаторами — движок щоразу
 генерує **новий** fingerprint. Після idle-kill (5 хв) / crash / рестарту контейнера
-relaunch дає іншу ідентичність → платформа інвалідовує сесію (relogin/detection),
-ламається immutable-інваріант Profile (ADR §3).
-**Доказ (звірено з клоном upstream — увага: тепер `v1.14.0`, docs аналізували образ
-`v1.6.0`; механізм **не** змінився):** `launchOptions({os,proxy,geoip,humanize,…})`
-(`server.js:1120`) **не** передає ні `fingerprint`, ні `config` → camoufox-js генерує
-**новий** fp при кожному `firefox.launch(options)` (`server.js:1143`). Персисту fp нема
-ніде: `grep FINGERPRINT_FILE|identity.json|fromBrowserforge` → 0 збігів; `persistence`-плагін
-зберігає лише `storageState` (cookies/localStorage/opt-in IndexedDB — `plugins/persistence/README.md`),
-не fingerprint. З `BROWSER_IDLE_TIMEOUT_MS` браузер релончиться **усередині живого
-контейнера**, не лише на старті.
-**Код + seam (ЗВІРЕНО з v1.14.0 — попередній план був хибний):** наявний хук
-`browser:launching { options }` (`server.js:1141`) фізично **надто пізній**. `options` там —
-це вже **результат** `launchOptions()` (1120→1130): fingerprint вливається в `config`
-(`utils.js:414` `mergeInto(config, fromBrowserforge(fingerprint))`), додаються seeds
-(`utils.js:426-433`), і весь config серіалізується в env-чанки `CAMOU_CONFIG_*`
-(`utils.js:548` `getEnvVars`). Повернений об'єкт **не має** полів `.fingerprint`/`.config` —
-Camoufox читає `CAMOU_CONFIG_*` з env, тож мутація `options.fingerprint` у `browser:launching`
-= **no-op**. Тому «без правок ядра» **неможливо**.
-**Рішення (реалізовано, path A):** у ядро додано **пре-хук** `browser:launchOptions { launchArgs }`
-*перед* `launchOptions()` (`server.js:1120`), який дає плагінам вписати `fingerprint`/`config`
-у **вхід** резолвера (офіційні параметри `camoufox-js`: `launchOptions({…fingerprint?, config?})`,
-`utils.d.ts:68-71`; `dist/fingerprints.d.ts` → `generateFingerprint`/`fromBrowserforge`).
-Задокументовано в `lib/plugins.js` (мутуючий хук поряд з `browser:launching`, `session:creating`).
-**Фікс:** плагін `plugins/identity/` читає `CAMOFOX_FINGERPRINT_FILE` (дефолт `<profileDir>/identity.json`)
-у хуку `browser:launchOptions` при **кожному** launch і ставить `launchArgs.fingerprint`/`launchArgs.config`
-(deep-clone — `launchOptions()` мутує config in-place). `generate:true` → self-generate при першому
-launch (SPEC-002 варіант A). Тести: `plugins/identity/plugin.test.js` (генерація+реюз стабільний,
-no-clobber, generate=false fallback, schema-фільтр seeds; E2E-стабільність `CAMOU_CONFIG` за `RUN_LIVE_TESTS`).
-**E2E ЗВІРЕНО наживо** (`scripts/verify-identity-e2e.sh`, rebuild образу + idle-kill relaunch у
-живому контейнері): POSITIVE — WebGL/navigator/screen ІДЕНТИЧНІ до/після relaunch (хук ×2);
-NEGATIVE (без плагіна) — WebGL дрейфує NVIDIA→AMD (контроль доводить, що проб ловить дрейф).
-**Дві знахідки з E2E** (не з рев'ю коду): (1) білд Firefox-135 не має `audio:seed`/`canvas:seed`
+relaunch дає іншу ідентичність → сесія інвалідовується (relogin/detection).
+**Доказ:** `launchOptions({os,proxy,geoip,humanize,…})` (`server.js:1120`) **не** передає
+ні `fingerprint`, ні `config` → camoufox-js генерує **новий** fp при кожному
+`firefox.launch(options)`. Персисту fp нема ніде; `persistence`-плагін зберігає лише
+`storageState` (cookies/localStorage/opt-in IndexedDB), не fingerprint. З
+`BROWSER_IDLE_TIMEOUT_MS` браузер релончиться **усередині живого контейнера**, не лише на старті.
+**Код + seam:** наявний хук `browser:launching { options }` фізично **надто пізній** — `options`
+там це вже **результат** `launchOptions()`: fingerprint вливається в `config`
+(`utils.js:414` `mergeInto(config, fromBrowserforge(fingerprint))`), додаються seeds, і весь config
+серіалізується в env-чанки `CAMOU_CONFIG_*` (`utils.js:548` `getEnvVars`). Повернений об'єкт
+**не має** полів `.fingerprint`/`.config` — Camoufox читає `CAMOU_CONFIG_*` з env, тож мутація
+`options.fingerprint` у `browser:launching` = **no-op**.
+**Рішення:** у ядро додано **пре-хук** `browser:launchOptions { launchArgs }` *перед*
+`launchOptions()` (`server.js:1120`), який дає плагінам вписати `fingerprint`/`config` у **вхід**
+резолвера (`launchOptions({…fingerprint?, config?})`). Задокументовано в `lib/plugins.js`.
+**Фікс:** плагін `plugins/identity/` читає `CAMOFOX_FINGERPRINT_FILE` (дефолт
+`<profileDir>/identity.json`) у хуку `browser:launchOptions` при **кожному** launch і ставить
+`launchArgs.fingerprint`/`launchArgs.config` (deep-clone — `launchOptions()` мутує config in-place).
+`generate:true` → self-generate при першому launch. Тести: `plugins/identity/plugin.test.js`;
+E2E — `scripts/verify-identity-e2e.sh` (rebuild образу + idle-kill relaunch у живому контейнері):
+POSITIVE — WebGL/navigator/screen ІДЕНТИЧНІ до/після relaunch; NEGATIVE (без плагіна) — WebGL дрейфує.
+**Три знахідки з E2E** (не з рев'ю коду): (1) білд Firefox-135 не має `audio:seed`/`canvas:seed`
 у `properties.json` → `validateConfig` кидав `UnknownProperty` → плагін фільтрує seeds за схемою
 білда (`camoufoxPath(false)`), identity.json лишається портативним суперсетом. (2) `launchOptions()`
-щолаунч ре-семплить WebGL і `mergeInto`-перезаписує його поза fingerprint → персист fingerprint
-НЕ пінує WebGL; фікс — персистити `[vendor,renderer]` (`getPossiblePairs`) і передавати
-`launchArgs.webgl_config`. (3) `canvas:aaOffset` camoufox `mergeInto`-перезаписує щолаунч без
-launch-input override → пінується **пост-резолюшн** у хуку `browser:launching` (реасембл
-`CAMOU_CONFIG_*` env-чанків → override → ре-чанк). Підсумок E2E: **уся поверхня fingerprint
-(navigator/screen/fonts/WebGL/canvas) стабільна** через idle-kill relaunch (POSITIVE ідентично,
-NEGATIVE-контроль дрейфує).
-**Гео-когерентність locale (додано):** fingerprint генерується під локаль країни проксі
+щолаунч ре-семплить WebGL і `mergeInto`-перезаписує його поза fingerprint → фікс: персистити
+`[vendor,renderer]` (`getPossiblePairs`) і передавати `launchArgs.webgl_config`. (3) `canvas:aaOffset`
+camoufox `mergeInto`-перезаписує щолаунч без launch-input override → пінується **пост-резолюшн**
+у хуку `browser:launching` (реасембл `CAMOU_CONFIG_*` env-чанків → override → ре-чанк). Підсумок:
+**уся поверхня fingerprint (navigator/screen/fonts/WebGL/canvas) стабільна** через idle-kill relaunch.
+**Гео-когерентність locale:** fingerprint генерується під локаль країни проксі
 (`localeFromCountry(PROXY_COUNTRY)` через вбудований ICU `Intl.Locale.maximize`, `lib/geo-locale.js`)
 → `navigator.language`/`languages`/`Accept-Language` збігаються з гео проксі (timezone/locale/
-geolocation/webrtc і так деривуються з exit-IP через geoip щолаунч). Лише коли проксі реально
-активний (без нього чужу локаль не заявляємо). Персиститься `locale` в `identity.json`.
-Персистити **обидва шари**: (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
-(2) noise-**seeds** (`audio:seed`, `canvas:seed`, `fonts:spacing_seed`, `window.history.length`)
-через `config=` — інакше canvas/audio попливе (seeds рандомізуються щолаунч через
-`setInto`=set-only-if-unset). **НЕ** персистити IP-exact поля (`webrtc:ipv4`, точна geolocation):
-лишати порожніми, `geoip=true` деривує їх з поточного проксі-IP щолаунч (стійкість до зміни
-sticky-IP у межах гео — SPEC-002 §6.1). Провіженинг файла — SPEC-002 варіант (A) self-generate
-(`generateFingerprint()` у provisioner) або (B) capture-on-first-launch (потребує ще й dump-хука).
-**Категорії ідентифікаторів:** fingerprint і proxy — **launch-bound** (вшиваються в процес
-Camoufox через `CAMOU_CONFIG` при спавні; на живому браузері підмінити НЕ можна — лише
-relaunch); cookies/storage (Layer-C) — **context-bound** (вантажаться per `newContext`).
-Ротація іншого Profile на слот = relaunch (stop → підмінити `identity.json` → start).
-**Блокує:** ADR §3 immutability; SPEC-002 A2/A3 (persist→restore, когерентність);
-стабільність fingerprint у пулі (SPEC-pool §6). До фіксу навіть статичний слот «пливе»
-після простою.
-**Приорітет:** 🔴 (несуча движкова зміна для всієї Profile-ідентичності; решта — довкола неї).
+geolocation/webrtc і так деривуються з exit-IP через geoip щолаунч). Лише коли проксі реально активний.
+**Персистити обидва шари:** (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
+(2) noise-**seeds** (`audio:seed`/`canvas:seed`/`fonts:spacing_seed`/`window.history.length`/`canvas:aaOffset`)
+через `config=` — інакше canvas/audio попливе. **НЕ** персистити IP-exact поля (`webrtc:ipv4`,
+точна geolocation): лишати порожніми, `geoip=true` деривує їх з поточного проксі-IP щолаунч (стійкість
+до зміни sticky-IP у межах гео).
+**Категорії ідентифікаторів:** fingerprint і proxy — **launch-bound** (вшиваються в процес Camoufox
+через `CAMOU_CONFIG` при спавні; на живому браузері підмінити НЕ можна — лише relaunch);
+cookies/storage — **context-bound** (вантажаться per `newContext`). Ротація іншого профілю на слот =
+relaunch (stop → підмінити `identity.json` → start).
+**Приорітет:** 🔴 (несуча движкова зміна для всієї ідентичності профілю; решта — довкола неї).
 
 ---
 
 ## #1 🟡 Уніфікувати активацію плагінів (env-gate мертвий, крім VNC)
-**Симптом:** увімкнути `cr-fixture` через env-змінну неможливо; довелось монтувати власний
+**Симптом:** увімкнути плагін через env-змінну неможливо; довелось монтувати власний
 `camofox.config.json` зі списком плагінів.
 **Доказ:** сервер вантажить лише плагіни зі списку `camofox.config.json` `plugins{}`;
 `plugin.json→enableEnvVar` не діє.
-**Код:** `config.js:145-146` — `pluginEnv` хардкодиться ЛИШЕ на `ENABLE_VNC` (loadPlugins
-викликається без загального `options.env`). Тому VNC вмикається env-ом, а решта — ні.
+**Код:** `pluginEnv` хардкодився ЛИШЕ на `ENABLE_VNC` (loadPlugins викликається без загального
+`options.env`). Тому VNC вмикався env-ом, а решта — ні.
 **Фікс (ЗРОБЛЕНО):** `config.js` `pluginEnv` більше не хардкодить `{ENABLE_VNC}`, а віддає повний
 `process.env` → `loadPlugins` (`lib/plugins.js:156`) читає `plugin.json.enableEnvVar` КОЖНОГО плагіна
 проти реального env. Тепер `ENABLE_<PLUGIN>=1` (напр. `ENABLE_IDENTITY=1`) вмикає плагін, якого нема
-у списку `plugins{}`, як і VNC. Плагіни й так у цьому процесі → нового доступу до env не з'являється.
-Тест: `plugins.test.js` «env gate reads ctx.config.pluginEnv when options.env is absent». E2E-звірено
-наживо: `ENABLE_IDENTITY=1` + `plugins:{}` → лог `plugin enabled by environment plugin:identity`.
+у списку `plugins{}`. Плагіни й так у цьому процесі → нового доступу до env не з'являється.
+Тест: `plugins.test.js`. E2E: `ENABLE_IDENTITY=1` + `plugins:{}` → лог `plugin enabled by environment`.
 **Приорітет:** 🟡 (developer-ergonomics; не блокує, але дорого дивує).
 
 ## #2 🔴 `evaluate` з проєкцією / лімітом результату
 **Симптом:** прогони по **~23 хв**; ходи моделі 2-3.5 хв кожен на роздутому контексті.
-**Доказ:** агент через `camofox_evaluate` смикнув masked `pageProps` (величезний JSON) →
-кожен наступний хід тягнув увесь блоб у контекст. Серверні логи: `evaluate resultType:"string"`
-(без обмеження розміру).
-**Код:** REST `POST /tabs/:id/evaluate` та MCP `camofox_evaluate` — повертають повний результат.
-**Фікс:** додати опційні `maxBytes` (обрізати з маркером) і/або jq-подібну `projection`
-(шлях у результаті), щоб віддавати лише потрібне, не заливаючи контекст агента.
+**Доказ:** агент через `camofox_evaluate` смикнув величезний JSON → кожен наступний хід тягнув увесь
+блоб у контекст. Серверні логи: `evaluate resultType:"string"` (без обмеження розміру).
+**Код:** REST `POST /tabs/:id/evaluate` та MCP `camofox_evaluate` — повертали повний результат.
+**Фікс (ЗРОБЛЕНО):** опційні `maxBytes` (обрізка з маркером) і/або jq-подібна `projection`
+(шлях у результаті). Логіка — `lib/evaluate-projection.js` (unit-тести); server default через
+`CAMOFOX_EVALUATE_MAX_RESULT_BYTES`. E2E: projection→піддерево, maxBytes→truncated.
 **Приорітет:** 🔴 (прямо здешевлює і прискорює агентні прогони).
 
 ## #3 🔴 Первокласний «capture XHR response» тул
-**Симптом:** агент вручну пише `fetch(url).then(r=>r.json())` у `evaluate`; на `/exclusive`
-ловить CORS/500 і мусить це обробляти сам.
-**Доказ:** дані сайту в XHR, не в HTML; ручний fetch крихкий (анонімний `/exclusive` → NetworkError).
-**Фікс:** тул `camofox_capture_response` — «поверни JSON першої XHR-відповіді, що метчить
-URL-патерн, у межах таймауту». Надійніше й дешевше за ручний fetch у сторінковому контексті.
+**Симптом:** агент вручну пише `fetch(url).then(r=>r.json())` у `evaluate`; ловить CORS/500
+і мусить це обробляти сам.
+**Доказ:** дані сайту в XHR, не в HTML; ручний fetch крихкий (анонімні endpoints → CORS/NetworkError).
+**Фікс (ЗРОБЛЕНО):** тул `camofox_capture_response` (REST `POST /tabs/:id/capture`) — повертає body
+першої XHR/fetch-відповіді, що метчить URL-патерн (підрядок або `/regex/`), у межах таймауту; reload
+для повторного тригера on-load XHR; реюзає projection/maxBytes (#2). `lib/capture.js` + unit-тести.
+E2E: reload-capture, projection, maxBytes, 504 на no-match.
 **Приорітет:** 🔴 (типовий патерн для data-екстракції; прибирає цілий клас помилок).
 
 ## #4 🔴 Контракт готовності для SPA (`waitFor`)
-**Симптом:** `networkidle` на цих SPA часто НЕ настає; кожен викликач винаходить readiness наново.
-**Доказ:** operating-knowledge harness-а прямо каже «готовність — за появою елемента, не networkidle»;
-покладання на `newPageTimeoutMs:10000` + ручний поллінг.
-**Код:** `navigate` / `create_tab`; `newPageTimeoutMs` у конфігу.
-**Фікс:** `navigate`/`create_tab` приймають `waitFor: {selector|text|networkQuietMs}` з
-fallback-таймаутом і повертають, коли умова виконана (а не просто по таймауту).
+**Симптом:** `networkidle` на багатьох SPA часто НЕ настає; кожен викликач винаходить readiness наново.
+**Код:** `navigate` / `create_tab`.
+**Фікс (ЗРОБЛЕНО):** `navigate`/`create_tab` приймають `waitFor: {selector|text|networkQuietMs}` з
+fallback-таймаутом; повертають `{matched, waitedMs, timedOut?}`. `lib/wait-for.js` +
+`waitForNetworkQuiet` (трекінг request/finished/failed + quiet-window). Timeout НЕ валить навігацію.
+E2E: selector/text/networkQuietMs→matched; неіснуючий selector→matched:false+nav ok.
 **Приорітет:** 🔴 (надійність навігації на всіх SPA).
 
 ## #5 🟡 Дефолтний віртуальний дисплей ≠ 1×1
 **Симптом:** headless-прогін і watch-прогін (VNC) — РІЗНІ середовища; не можна чисто змішувати дані.
-**Доказ (звірено з v1.14.0):** базовий camoufox-js Xvfb — `1x1x24`, АЛЕ ядро вже перекриває його
-на **1280×720** (`DefaultVirtualDisplay`, server.js) — тобто «1×1» уже нема (докси аналізували
-образ v1.6.0). Лишалась справжня проблема: розмір був **хардкод**, тож headless (1280×720) ≠
-watched VNC (1920×1080) — скріншоти не порівняти.
-**Код:** `ctx.createVirtualDisplay` (vnc override у `/app/plugins/vnc/`); `DefaultVirtualDisplay` у ядрі.
-**Фікс (ЗРОБЛЕНО):** дефолт-роздільність конфігурована через `CAMOFOX_DISPLAY_RESOLUTION` (формат
-`WxH`/`WxHxDepth`, дефолт `1280x720x24`; невалідне → fallback на дефолт; `lib/display.js`
-`normalizeDisplayResolution`). Оператор може вирівняти headless із VNC для паритету скріншотів.
-VNC-плагін і далі перекриває своєю роздільністю. Лог `xvfb virtual display started` тепер містить
-`resolution` (з `.resolution`-геттера дисплея, точний і за VNC-override). E2E-звірено: env
-`CAMOFOX_DISPLAY_RESOLUTION=1600x900` → Xvfb `-screen 0 1600x900x24`; default→1280x720x24;
-garbage→fallback.
+**Доказ:** базовий camoufox-js Xvfb — `1x1x24`, АЛЕ ядро вже перекриває його на **1280×720**
+(`DefaultVirtualDisplay`). Лишалась справжня проблема: розмір був **хардкод**, тож headless (1280×720)
+≠ watched VNC (1920×1080) — скріншоти не порівняти.
+**Фікс (ЗРОБЛЕНО):** дефолт-роздільність конфігурована через `CAMOFOX_DISPLAY_RESOLUTION`
+(`WxH`/`WxHxDepth`, дефолт `1280x720x24`; невалідне → fallback; `lib/display.js`). Лог
+`xvfb virtual display started` містить `resolution` (точний і за VNC-override). E2E:
+`CAMOFOX_DISPLAY_RESOLUTION=1600x900` → Xvfb `-screen 0 1600x900x24`; garbage→fallback.
 **Приорітет:** 🟡 (детермінізм/паритет headless↔watched; впливає на скріншоти).
 
 ## #6 🟡 REST `snapshot` без зображення
 **Симптом:** через REST-шлях snapshot губиться візуал (скрін).
-**Доказ (звірено з v1.14.0):** REST snapshot **уже** повертає base64 PNG за `?includeScreenshot=true`
-(server.js, три шляхи; MCP `camofox_snapshot` шле саме цей параметр) — тобто основне вже є (докси
-з v1.6.0 застаріли). Лишався ергономічний сюрприз: FIXES/агенти тягнуться до `?screenshot=true`,
-а код чекав `includeScreenshot` → тихо без картинки.
-**Фікс (ЗРОБЛЕНО):** `?screenshot=true` прийнято як **аліас** до `includeScreenshot` на ОБОХ
-snapshot-endpoints (`GET /tabs/:id/snapshot` і OpenClaw `GET /snapshot`) через спільний
-`wantScreenshot`. openapi документує обидва. E2E-звірено: `?screenshot=true` → `{screenshot:{data(base64),
-mimeType:image/png}}`; без прапорця → без зображення (backward-compat).
+**Доказ:** REST snapshot **уже** повертає base64 PNG за `?includeScreenshot=true` (три шляхи; MCP
+`camofox_snapshot` шле саме цей параметр). Лишався ергономічний сюрприз: агенти тягнуться до
+`?screenshot=true`, а код чекав `includeScreenshot` → тихо без картинки.
+**Фікс (ЗРОБЛЕНО):** `?screenshot=true` — **аліас** до `includeScreenshot` на ОБОХ snapshot-endpoints
+через спільний `wantScreenshot`. openapi документує обидва. E2E: обидва імені → PNG; без прапорця →
+без зображення (backward-compat).
 **Приорітет:** 🟡 (форензика/скриптовий шлях).
 
 ## #7 🟡 Спостережуваність аргументів тулів
 **Симптом:** дебаг агента наосліп — не видно, ЩО він виконав.
-**Доказ:** логи показують `evaluate` + `resultType`, але НЕ сам `expression`; `navigate` URL логується,
-`evaluate` args — ні. Годину дебагу з'їло саме це.
-**Код:** логер запитів навколо `evaluate`.
+**Доказ:** логи показують `evaluate` + `resultType`, але НЕ сам `expression`.
 **Фікс (ЗРОБЛЕНО):** опційний env `CAMOFOX_LOG_TOOL_ARGS=1` додає `expression` у лог `evaluate`,
 пропущений через `lib/redact.js` `redactToolArg`: маскує секрет-подібні пари (`password`/`token`/
-`authorization`/`bearer`/`api_key`/`cookie`/`*_key`, квотовані й ні) і обрізає до 512B (UTF-8-safe
-з маркером). Вимкнено за замовчуванням (expression може містити чутливе; `log()` рівнів не гейтить,
-тож гейт — саме env-флаг). Тести: `redact.test.js`. E2E-звірено: з флагом лог показує
+`authorization`/`bearer`/`api_key`/`cookie`/`*_key`) і обрізає до 512B (UTF-8-safe). Вимкнено за
+замовчуванням (expression може містити чутливе). Тести: `redact.test.js`. E2E: з флагом лог показує
 `expression:"...token=\"***\"..."`; без флага — поля нема.
 **Приорітет:** 🟡 (developer-experience при дебагу агентів).
 
 ## #8 🟢 Пул / keep-warm браузера
 **Симптом:** кожна сесія — холодний старт ~10с; на матриці з десятків прогонів набігає.
-**Доказ:** лог `browser pre-warmed ~9963ms`; браузер idle-закривається через `BROWSER_IDLE_TIMEOUT_MS`
-(дефолт 5хв), тож прогони, рознесені ширше за це вікно (matrix-клітинки ~23хв), холоднішали щоразу.
-**Межа (звірено з pool-SPEC):** справжній пул = **N контейнерів**, декларативний NixOS
-(`SPEC-camofox-pool-pattern-A`, «MCP-код не змінюється, контейнерами не керує»; мульти-браузер в
-одному контейнері — відхилено). Тож у движку — лише **keep-warm** одного браузера, не пул.
+**Доказ:** браузер idle-закривається через `BROWSER_IDLE_TIMEOUT_MS` (дефолт 5хв), тож прогони,
+рознесені ширше за це вікно, холоднішали щоразу.
+**Межа:** справжній пул = **N контейнерів** (оркестрація поза движком; браузер — singleton на
+контейнер). Тож у движку — лише **keep-warm** одного браузера, не пул.
 **Фікс (ЗРОБЛЕНО, движкова половина):** `BROWSER_IDLE_TIMEOUT_MS=0` вмикає keep-warm — (1) не
 idle-закривати браузер (гард у `scheduleBrowserIdleShutdown`), (2) **eager re-warm** після
-неочікуваного закриття (crash/disconnect/memory) через `scheduleBrowserWarmRetry` (backoff-safe),
-не чекаючи наступного запиту; НЕ re-warm на `shutdown`/`admin_stop`. Логіка — `lib/keep-warm.js`
-(`isKeepWarm`/`shouldRewarmAfterClose`, unit-тести). Дефолт (5хв idle) — без змін.
-E2E-звірено: keep-warm=on → після drop сесії браузер лишається connected (без idle-shutdown);
-off (короткий idle) → закривається; kill camoufox → авто re-warm без запиту.
-**Зв'язок:** доповнює `SPEC-camofox-pool-pattern-A` (пул контейнерів) — кожен слот тепер може лишатись теплим.
+неочікуваного закриття (crash/disconnect/memory) через `browser.on('disconnected')` →
+`scheduleBrowserWarmRetry` (backoff-safe), не чекаючи наступного запиту; НЕ re-warm на
+`shutdown`/`admin_stop`. Логіка — `lib/keep-warm.js` (unit-тести). Дефолт (5хв idle) — без змін.
+E2E: keep-warm=on → браузер лишається connected після drop сесії; off → закривається; kill camoufox
+→ авто re-warm без запиту.
 **Приорітет:** 🟢 (продуктивність під навантаженням).
 
 ## Дрібне
-- **trace.zip** осідає в `/root/.camofox/traces/<sessionKey>/` → губиться на `--rm` без volume.
-  Обхід: `CAMOFOX_TRACES_DIR`. **ЗРОБЛЕНО:** одноразовий warn при першому трейсі, якщо
-  `CAMOFOX_TRACES_DIR` не заданий явно (дефолт-шлях ефемерний) — з remediation «set CAMOFOX_TRACES_DIR
-  to a mounted volume». `config.js:tracesDirExplicit`. E2E-звірено: дефолт→warn; explicit+mount→тиша.
+- **trace.zip** осідає в дефолтному `~/.camofox/traces/` → губиться на `--rm` без volume.
+  **ЗРОБЛЕНО:** одноразовий warn при першому трейсі, якщо `CAMOFOX_TRACES_DIR` не заданий явно
+  (дефолт-шлях ефемерний) — з remediation. `config.js:tracesDirExplicit`. E2E: дефолт→warn;
+  explicit+mount→тиша.
 
 ---
 
-## Порядок
-**#0 (fingerprint inject / #12)** — фундамент: без нього Profile-ідентичність нестабільна,
-пул і SPEC-002 блокуються. Робити першим як окрему движкову зміну.
-Далі ергономіка агента: **#2 evaluate-проєкція · #3 capture-XHR · #4 waitFor** — усі три
-прямо б'ють по тому, що зробило агентні прогони повільними й крихкими. #1 (plugin-env) — за
-приємність розробника.
-
-## Не-camofox (для повноти, не фіксити тут)
-- Провайдер МОДЕЛІ rate-limit-ить швидку серію викликів (не camofox; лікується пейсингом у harness).
-- `hermes --cli` вішає oneshot без TTY (це Hermes CLI, не camofox).
+## Верифікація
+Кожен фікс: чиста логіка в `lib/*` з unit-тестами → server.js/MCP wiring → openapi regen →
+живий E2E у Docker. Повний набір сьютів проходить у CI-паритетному образі (`Dockerfile.test`):
+**75 suites / 912 тестів, 0 failed**.

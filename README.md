@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="fox.png" alt="camofox-browser" width="200" />
+  <img src="logo.png" alt="camofox-browser" width="200" />
   <h1>camofox-browser</h1>
   <p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>
   <p>
@@ -749,12 +749,6 @@ npm run test:debug    # with server output
 ```bash
 npm install @askjo/camofox-browser
 ```
-
-## Credits
-
-- [Camoufox](https://camoufox.com) - Firefox-based browser with C++ anti-detection
-- [Donate to Camoufox's original creator daijro](https://camoufox.com/about/)
-- [OpenClaw](https://openclaw.ai) - Open-source AI agent framework
 
 ## Crypto Scam Warning
 

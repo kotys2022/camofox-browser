@@ -80,6 +80,14 @@ If `fingerprintFile` is omitted it defaults to `<profileDir>/identity.json`.
   missing (self-generate). Set `false` to require an externally provisioned
   file (variant B); with no file the launch falls back to camoufox's per-launch
   random fingerprint (upstream behavior).
+- **`localeFollowsProxy`** (default `false`; env `CAMOFOX_LOCALE_FOLLOWS_PROXY=1`):
+  when a **persisted** profile is re-homed to a new country, overwrite only
+  `navigator.language` / `navigator.languages` to match the current `PROXY_COUNTRY`
+  at each launch, leaving the rest of the fingerprint (and the on-disk file)
+  untouched. `geoip` already makes timezone/geolocation/webrtc follow the exit IP;
+  this covers the one field it doesn't. Off by default — for a stable login
+  identity a changing browser language is itself a soft signal; a no-op within the
+  same country.
 
 ## Rotation
 

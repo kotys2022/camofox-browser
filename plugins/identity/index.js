@@ -60,7 +60,7 @@ import path from 'node:path';
 import { generateFingerprint } from 'camoufox-js/dist/fingerprints.js';
 import { camoufoxPath } from 'camoufox-js/dist/pkgman.js';
 import { getPossiblePairs } from 'camoufox-js/dist/webgl/sample.js';
-import { localeFromCountry } from '../../lib/geo-locale.js';
+import { localeFromCountry, applyLocaleToFingerprint } from '../../lib/geo-locale.js';
 
 const IDENTITY_VERSION = 1;
 
@@ -214,7 +214,16 @@ export async function register(app, ctx, pluginConfig = {}) {
 
   const generate = pluginConfig.generate !== false;
 
-  log('info', 'identity plugin enabled', { fingerprintFile, generate });
+  // Opt-in: keep a persisted identity's navigator.language coherent with the
+  // *current* proxy country each launch (re-homing a profile to a new geo),
+  // patching only the locale fields. Off by default -- for a stable login
+  // identity a changing browser language is itself a soft signal.
+  const localeFollowsProxy =
+    process.env.CAMOFOX_LOCALE_FOLLOWS_PROXY === '1' ||
+    process.env.CAMOFOX_LOCALE_FOLLOWS_PROXY === 'true' ||
+    pluginConfig.localeFollowsProxy === true;
+
+  log('info', 'identity plugin enabled', { fingerprintFile, generate, localeFollowsProxy });
 
   // Serialize first-launch generation so concurrent relaunch attempts don't race
   // to write the same file.
@@ -300,6 +309,18 @@ export async function register(app, ctx, pluginConfig = {}) {
       // Deep-clone: launchOptions() mutates the config object in place
       // (webgl, canvas:aaOffset, geolocation), which must not leak back to disk.
       launchArgs.fingerprint = structuredClone(identity.fingerprint);
+      // Re-home navigator.language to the current proxy country (opt-in). geoip
+      // already makes tz/geo/webrtc follow the exit IP; this covers the one field
+      // it doesn't. No-op within the same country (locale already matches).
+      if (localeFollowsProxy && launchArgs.proxy) {
+        const locale = localeFromCountry(config?.proxy?.country);
+        const r = applyLocaleToFingerprint(launchArgs.fingerprint, locale);
+        if (r.changed) {
+          log('info', 'identity plugin: navigator.language re-homed to proxy country', {
+            from: r.from, to: r.to, proxyCountry: config?.proxy?.country || null,
+          });
+        }
+      }
       launchArgs.config = {
         ...(launchArgs.config || {}),
         ...structuredClone(noiseConfig),

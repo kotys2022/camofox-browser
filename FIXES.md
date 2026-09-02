@@ -47,6 +47,12 @@ camoufox `mergeInto`-перезаписує щолаунч без launch-input o
 (`localeFromCountry(PROXY_COUNTRY)` через вбудований ICU `Intl.Locale.maximize`, `lib/geo-locale.js`)
 → `navigator.language`/`languages`/`Accept-Language` збігаються з гео проксі (timezone/locale/
 geolocation/webrtc і так деривуються з exit-IP через geoip щолаунч). Лише коли проксі реально активний.
+**Опційне re-home локалі (`CAMOFOX_LOCALE_FOLLOWS_PROXY=1`):** для **персистованого** профілю, який
+переїжджає в іншу країну, при кожному launch перезаписуються **лише** `navigator.language`/`languages`
+під поточну `PROXY_COUNTRY` (`applyLocaleToFingerprint`, `lib/geo-locale.js`) — решта відбитка стабільна,
+диск не чіпається (патч у пам'яті). Off за замовчуванням (зміна мови між сесіями для логін-акаунта —
+сама по собі слабкий сигнал; у межах однієї країни — no-op). E2E: identity під en-US + SI-проксі+прапорець
+→ браузер віддає `sl-SI`, identity.json на диску лишається `en-US`.
 **Персистити обидва шари:** (1) Browserforge `Fingerprint` (navigator/screen/webgl/fonts) +
 (2) noise-**seeds** (`audio:seed`/`canvas:seed`/`fonts:spacing_seed`/`window.history.length`/`canvas:aaOffset`)
 через `config=` — інакше canvas/audio попливе. **НЕ** персистити IP-exact поля (`webrtc:ipv4`,

@@ -4,19 +4,19 @@
   <p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-    <a href="https://github.com/jo-inc/camofox-browser/stargazers"><img src="https://img.shields.io/github/stars/jo-inc/camofox-browser" alt="GitHub stars" /></a>
-    <a href="https://www.npmjs.com/package/camofox-browser"><img src="https://img.shields.io/npm/v/camofox-browser" alt="npm version" /></a>
-    <a href="https://github.com/jo-inc/camofox-browser/commits"><img src="https://img.shields.io/github/last-commit/jo-inc/camofox-browser" alt="GitHub last commit" /></a>
   </p>
   <p>
     Standing on the mighty shoulders of <a href="https://camoufox.com">Camoufox</a> - a Firefox fork with fingerprint spoofing at the C++ level.
+  </p>
+  <p>
+    A fork of <a href="https://github.com/jo-inc/camofox-browser">jo-inc/camofox-browser</a> v1.14.0, with ergonomics &amp; defaults tuned for real agent workloads — see <a href="FIXES.md">FIXES.md</a> &amp; <a href="FORK.md">FORK.md</a>.
   </p>
 </div>
 
 <br/>
 
 ```bash
-git clone https://github.com/jo-inc/camofox-browser && cd camofox-browser
+git clone https://github.com/kotys2022/camofox-browser && cd camofox-browser
 npm install && npm start
 # -> http://localhost:9377
 ```
@@ -53,7 +53,6 @@ This project wraps that engine in a REST API built for agents: accessibility sna
 - **OpenAPI Docs** - auto-generated spec at [`/openapi.json`](http://localhost:9377/openapi.json) and interactive docs at [`/docs`](http://localhost:9377/docs)
 - **Structured Extract** - `POST /tabs/:tabId/extract` with a JSON Schema that maps properties to snapshot refs via `x-ref`
 - **Session Tracing** - opt-in per-session Playwright trace capture (screenshots + DOM snapshots + network) with API endpoints to list, fetch, and delete trace zips
-- **Telemetry** - automatic [anonymized crash/hang telemetry](lib/reporter.js#L28-L290) via GitHub Issues. Identifies which sites cause failures and common failure patterns. Private domains are HMAC-hashed, paths/params stripped, tokens/IPs redacted. Opt-out with `CAMOFOX_CRASH_REPORT_ENABLED=false`.
 
 ## Capabilities
 
@@ -91,7 +90,7 @@ A full rundown of what the server can do. Items marked **(fork)** are additions 
 - **Configurable virtual display (fork)** — `CAMOFOX_DISPLAY_RESOLUTION` aligns a headless run with a VNC-watched run for screenshot parity.
 - **Tool-arg observability (fork)** — opt-in `CAMOFOX_LOG_TOOL_ARGS` logs the evaluate expression with secret redaction and a length cap.
 - **Session tracing** — opt-in per-session Playwright traces (screenshots + DOM + network) with list/fetch/delete endpoints; a default-path warning (fork) prevents silent trace loss on `--rm` without a volume.
-- **Structured logging & telemetry** — JSON log lines with request IDs; opt-out anonymized crash/hang telemetry that files GitHub Issues for failing sites.
+- **Structured logging** — JSON log lines with request IDs for production observability.
 
 ### Media & search
 - **YouTube transcripts** — extract captions via yt-dlp, no API key needed.
@@ -116,24 +115,16 @@ The Docker image includes yt-dlp. For local dev, install it for the `/youtube/tr
 
 ### OpenClaw Plugin
 
-```bash
-openclaw plugins install @askjo/camofox-browser
-```
+The MCP/OpenClaw adapter lives in [`mcp/`](mcp/) and is built from source (this fork is not published to the OpenClaw registry).
 
 **Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`
 
 ### Standalone
 
-Run from npm:
+From source:
 
 ```bash
-npx @askjo/camofox-browser
-```
-
-Or from source:
-
-```bash
-git clone https://github.com/jo-inc/camofox-browser
+git clone https://github.com/kotys2022/camofox-browser
 cd camofox-browser
 npm install
 npm start  # downloads Camoufox on first run (~300MB)
@@ -392,121 +383,6 @@ When a proxy is configured:
 - Browser fingerprint (language, timezone, coordinates) is consistent with the proxy location
 - Without a proxy, defaults to `en-US`, `America/Los_Angeles`, San Francisco coordinates
 
-### Telemetry
-
-Browser automation fails in ways that are hard to predict -- Cloudflare challenges, site redesigns breaking selectors, redirect loops, dialog storms, renderer crashes. The scope is wide and the failure modes are diverse. Without telemetry, the only signal is "it didn't work."
-
-Telemetry gives us structured data on *which sites fail*, *how they fail*, and *how often*, so we can prioritize fixes for the patterns that actually affect users. It files GitHub Issues automatically when:
-
-- **Uncaught exceptions** crash the process
-- **Event loop stalls** exceed 5 seconds (watchdog detection)
-- **Frustration patterns** -- 3+ consecutive failures (timeout, dead context, navigation abort) on the same tab
-
-Each report includes the failure type, stack trace, tab health counters (HTTP status histogram, console errors, request failures, redirect depth), and the target URL -- all anonymized.
-
-#### How it works
-
-Telemetry is sent to a lightweight Cloudflare Worker endpoint at [`https://camofox-telemetry.askjo.workers.dev`](https://camofox-telemetry.askjo.workers.dev/health). The endpoint holds the GitHub App credentials as environment secrets -- **no secrets are shipped in this package**.
-
-```
-lib/reporter.js (client, no secrets)
-    |  anonymize -> POST https://camofox-telemetry.askjo.workers.dev/report
-    v
-Cloudflare Worker (holds GitHub App key)
-    |  validate -> rate-limit -> dedup -> create GitHub Issue
-    v
-GitHub Issue created
-```
-
-The endpoint source code is in this repo at [`workers/crash-reporter/index.ts`](workers/crash-reporter/index.ts).
-
-#### Verification
-
-You don't have to trust us -- verify what the live endpoint is running:
-
-```bash
-# 1. Ask the endpoint what code it's running
-curl https://camofox-telemetry.askjo.workers.dev/source
-# -> { "commit": "abc1234", "sha256": "e3b0c44...", "source": "https://github.com/..." }
-
-# 2. Compare the sha256 against the source in this repo
-sha256sum workers/crash-reporter/index.ts
-
-# 3. Check the commit matches what CI deployed
-#    https://github.com/jo-inc/camofox-browser/actions/workflows/telemetry-deploy.yml
-git log --oneline workers/crash-reporter/index.ts | head -1
-```
-
-If the hashes don't match, the endpoint is running different code than what's in the repo. The deploy workflow ([`.github/workflows/telemetry-deploy.yml`](.github/workflows/telemetry-deploy.yml)) injects the commit and source hash at deploy time -- every deploy is auditable in [GitHub Actions](https://github.com/jo-inc/camofox-browser/actions/workflows/telemetry-deploy.yml).
-
-Or skip verification entirely: `CAMOFOX_CRASH_REPORT_ENABLED=false` disables all telemetry, or point to [your own endpoint](#self-hosted-telemetry-endpoint) with `CAMOFOX_CRASH_REPORT_URL`.
-
-#### Privacy
-
-All reported data goes through paranoid anonymization ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) before leaving the process:
-
-- **URLs** -- well-known public domains (Google, Amazon, Reddit, Cloudflare, etc.) are shown verbatim so we can identify which sites cause problems. Private/unknown domains are replaced with a stable HMAC hash (`site-a1b2c3d4`) -- same hash across reports for correlation, but not reversible to the original domain. Path segments become `*/*/*` (depth only). Query params become `?[3]` (count only). No keys, values, or path content is ever included.
-- **File paths** -> stripped to filename only (`<path>/server.js`)
-- **Tokens, secrets, API keys** -> `<token>`
-- **IPs, emails, env vars** -> redacted
-- **Docker/Fly machine IDs** -> `<id>`
-- **Tab health** -- pure counters (crash count, error count, status code histogram). No page content, no URLs, no user data.
-
-Duplicate issues are detected by stack signature and get a `+1` comment instead of a new issue.
-
-```bash
-# Disable telemetry
-export CAMOFOX_CRASH_REPORT_ENABLED=false
-
-# Point to your own endpoint (see below)
-export CAMOFOX_CRASH_REPORT_URL=https://your-endpoint.example.com/report
-
-# Adjust rate limit (default: 10 per hour)
-export CAMOFOX_CRASH_REPORT_RATE_LIMIT=5
-```
-
-#### Self-hosted telemetry endpoint
-
-To file telemetry reports in your own GitHub repo instead of `jo-inc/camofox-browser`:
-
-1. **Create a GitHub App** -- [Settings -> Developer settings -> GitHub Apps -> New](https://github.com/settings/apps/new)
-   - Permissions: **Repository -> Issues -> Read & Write**
-   - Uncheck **Webhook -> Active** (not needed)
-   - Click **Generate a key** -- downloads a `.pem` file
-   - Install the app on your target repo (Install App -> select repo)
-   - Note your **App ID** (number on the app's General page) and **Installation ID** (from the URL after installing: `github.com/settings/installations/{id}`)
-
-2. **Deploy the endpoint** -- clone this repo and deploy the worker:
-   ```bash
-   cd workers/crash-reporter
-   # Edit wrangler.toml: set account_id to your Cloudflare account ID
-   npx wrangler deploy
-   ```
-   The worker is a single TypeScript file with zero npm dependencies. It also runs on Deno, Bun, or any runtime with the Web Crypto API.
-
-3. **Set worker secrets:**
-   ```bash
-   cd workers/crash-reporter
-   echo "YOUR_APP_ID" | npx wrangler secret put GH_APP_ID
-   echo "YOUR_INSTALL_ID" | npx wrangler secret put GH_INSTALL_ID
-   # Key must be PKCS#8 DER base64 (not raw PEM)
-   openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt -in your-app.pem | \
-     base64 | tr -d '\n' | npx wrangler secret put GH_PRIVATE_KEY
-   # File issues in your repo
-   echo "your-org/your-repo" | npx wrangler secret put GH_REPO
-   ```
-
-4. **Point camofox-browser to your endpoint:**
-   ```bash
-   export CAMOFOX_CRASH_REPORT_URL=https://your-worker.your-subdomain.workers.dev/report
-   ```
-
-5. **Verify:**
-   ```bash
-   curl https://your-worker.your-subdomain.workers.dev/health
-   # -> {"status":"ok"}
-   ```
-
 ### Structured Logging
 
 All log output is JSON (one object per line) for easy parsing by log aggregators:
@@ -658,6 +534,7 @@ Browser behavior can be tuned in `camofox.config.json`:
 | `HANDLER_TIMEOUT_MS` | Max time for any handler | `30000` (30s) |
 | `MAX_CONCURRENT_PER_USER` | Concurrent request cap per user | `3` |
 | `MAX_OLD_SPACE_SIZE` | Node.js V8 heap limit (MB) | `128` |
+| `PROXY_URL` | Full proxy as one string `scheme://user:pass@host:port` (`http`/`https`/`socks5`); discrete `PROXY_*` override it | - |
 | `PROXY_STRATEGY` | Proxy mode: `backconnect` (rotating sticky sessions) or blank (single endpoint) | - |
 | `PROXY_PROVIDER` | Provider name for session format (e.g. `decodo`) | `decodo` |
 | `PROXY_HOST` | Proxy hostname or IP (simple mode) | - |
@@ -669,10 +546,6 @@ Browser behavior can be tuned in `camofox.config.json`:
 | `PROXY_COUNTRY` | Target country for proxy geo-targeting | - |
 | `PROXY_STATE` | Target state/region for proxy geo-targeting | - |
 | `TAB_INACTIVITY_MS` | Close tabs idle longer than this | `300000` (5min) |
-| `CAMOFOX_CRASH_REPORT_ENABLED` | Enable anonymized crash/hang telemetry (`false` to disable) | `true` |
-| `CAMOFOX_CRASH_REPORT_URL` | Telemetry endpoint ([self-hosted endpoint](#self-hosted-telemetry-endpoint)) | `https://camofox-telemetry.askjo.workers.dev/report` |
-| `CAMOFOX_CRASH_REPORT_REPO` | GitHub repo for telemetry issues | `jo-inc/camofox-browser` |
-| `CAMOFOX_CRASH_REPORT_RATE_LIMIT` | Max telemetry reports per hour | `10` |
 | `ENABLE_VNC` | Enable VNC plugin for interactive browser access (`1`) | - |
 | `VNC_PASSWORD` | Password for VNC access (recommended in production) | - |
 | `NOVNC_PORT` | noVNC web UI port | `6080` |
@@ -721,7 +594,7 @@ All `process.env` reads are centralized in `lib/config.js`. All `child_process` 
 
 ### No embedded secrets
 
-Zero credentials, private keys, API tokens, or signing keys ship in this package. All secrets are provided at runtime via environment variables (`CAMOFOX_API_KEY`, `CAMOFOX_ACCESS_KEY`) or are Cloudflare Worker environment secrets (telemetry endpoint GitHub App key).
+Zero credentials, private keys, API tokens, or signing keys ship in this package. All secrets are provided at runtime via environment variables (`CAMOFOX_API_KEY`, `CAMOFOX_ACCESS_KEY`).
 
 ### Cookie import is disabled by default
 
@@ -735,17 +608,13 @@ The cookie import endpoint (`POST /sessions/:userId/cookies`) is gated behind `C
 
 The Camoufox browser engine (~300MB) is downloaded at `npm install` time by [`camoufox-js`](https://www.npmjs.com/package/camoufox-js), an npm package maintained by the [Camoufox project](https://camoufox.com). It downloads from [official GitHub releases](https://github.com/nicedayzhu/camoufox/releases) with integrity verification handled by `camoufox-js`. No custom download URLs, no URL shorteners, no raw IP addresses.
 
-### Telemetry
-
-Anonymized crash/hang telemetry is sent to a Cloudflare Worker endpoint. The endpoint source is [in this repo](workers/crash-reporter/index.ts) and auditable. Verification: `GET /source` on the endpoint returns the deployed commit hash and sha256 so you can compare against the repo. The reporter ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) applies paranoid anonymization: private domains are HMAC-hashed (not reversible), paths are stripped, tokens/IPs/emails are redacted. No page content, cookies, or user data is ever sent. Disable with `CAMOFOX_CRASH_REPORT_ENABLED=false` or point to your own endpoint with `CAMOFOX_CRASH_REPORT_URL`.
-
 ### Session persistence
 
 The persistence plugin saves cookies and localStorage to `~/.camofox/profiles/<hashed-userId>/` so authenticated sessions survive browser restarts. UserIds are hashed for directory names. Disable via `camofox.config.json` by removing `persistence` from the plugins array.
 
 ### Network access
 
-Outbound connections are made to: (1) URLs the agent navigates to (core functionality), (2) the telemetry endpoint (anonymized, opt-out available). Inbound: the REST API on port 9377, bound to all interfaces by default or to `CAMOFOX_BIND_HOST` when configured, optionally protected by `CAMOFOX_ACCESS_KEY`.
+Outbound connections are made to the URLs the agent navigates to (core functionality). Inbound: the REST API on port 9377, bound to all interfaces by default or to `CAMOFOX_BIND_HOST` when configured, optionally protected by `CAMOFOX_ACCESS_KEY`.
 
 ### Subprocess usage
 

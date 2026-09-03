@@ -3,7 +3,7 @@
 ## Що це
 Форк **[jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser)** (upstream **v1.14.0**)
 з набором виправлень ергономіки й дефолтів під реальне агентне навантаження
-(data-екстракція через MCP). Повний список змін — у **`FIXES.md`**, огляд форку — у **`FORK.md`**.
+(data-екстракція через MCP). Огляд змін форку — розділ **Fork changes** у `README.md`.
 
 > JS-залежності: `npm install --ignore-scripts` (бінарник браузера не тягнеться; за потреби
 > `npm run fetch-bin`). Реальний запуск — через Docker-образ (`make build` → `camofox-browser:local`).
@@ -49,7 +49,7 @@ Cold browser start ≈ **10с** (`browser pre-warmed`). Unit-сьюти, що с
 ## Нові env-прапорці форку
 `ENABLE_IDENTITY`, `CAMOFOX_FINGERPRINT_FILE`, `BROWSER_IDLE_TIMEOUT_MS=0` (keep-warm),
 `CAMOFOX_DISPLAY_RESOLUTION`, `CAMOFOX_EVALUATE_MAX_RESULT_BYTES`, `CAMOFOX_LOG_TOOL_ARGS`,
-`CAMOFOX_TRACES_DIR`. Деталі — `FORK.md`.
+`CAMOFOX_TRACES_DIR`. Деталі — розділи **Fork changes** / **Environment Variables** у `README.md`.
 
 ## Середовище розробки
 Тести — native ESM (`NODE_OPTIONS=--experimental-vm-modules`), `jest.config.cjs` `transform:{}`.

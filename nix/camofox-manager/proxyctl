@@ -1,0 +1,441 @@
+#!/usr/bin/env python3
+"""camofox proxyctl — profile/proxy manager.
+
+Phase 2, step 1: `ls` + `generate` (dry-run). Pure toml -> systemd-unit rendering;
+NO host mutation. Secrets (proxy creds) go into a per-profile --env-file, never
+into ExecStart, so `systemctl cat` / `ps` don't leak them.
+
+Source of truth: camofox-profiles.toml (real one is sops-encrypted whole; this tool
+reads a decrypted path). See camofox-proxy-manager.SPEC.md.
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+
+IMAGE = os.environ.get("CAMOFOX_IMAGE", "camofox-browser:local")
+DATA_ROOT = os.environ.get("CAMOFOX_DATA_ROOT", "/var/lib/camofox")  # <DATA_ROOT>/<id>:/root/.camofox
+RUN_ENV_DIR = os.environ.get("CAMOFOX_RUN_ENV_DIR", "/run/camofox")  # per-profile secret env-file (0600)
+UNIT_DIR = "/etc/systemd/system"
+VALID_KINDS = ("sticky", "pool")
+
+
+def load(path):
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def profiles_of(doc):
+    return doc.get("profiles", {})
+
+
+# --- validation -------------------------------------------------------------
+
+def validate(profs):
+    """Return list of (level, id, message). level in {error, warn}."""
+    issues = []
+    seen_ports = {}
+    for pid, p in profs.items():
+        kind = p.get("kind")
+        if kind not in VALID_KINDS:
+            issues.append(("error", pid, f"kind must be one of {VALID_KINDS}, got {kind!r}"))
+        if not p.get("country"):
+            issues.append(("warn", pid, "no country -> navigator.language/geoip not geo-pinned"))
+        port = p.get("port")
+        if not isinstance(port, int):
+            issues.append(("error", pid, f"port must be an integer, got {port!r}"))
+        elif port in seen_ports:
+            issues.append(("error", pid, f"port {port} already used by {seen_ports[port]!r}"))
+        else:
+            seen_ports[port] = pid
+        if kind == "sticky" and not p.get("proxy"):
+            issues.append(("warn", pid, "no proxy -> direct connection (no geoip / geo-locale)"))
+        if kind == "pool":
+            pool = p.get("proxies") or []
+            if not pool:
+                issues.append(("error", pid, "pool profile has empty `proxies`"))
+            if len(pool) != len(set(pool)):
+                issues.append(("warn", pid, "duplicate entries in `proxies` (engine dedupes)"))
+    return issues
+
+
+def proxy_count(p):
+    return len(p.get("proxies", [])) if p.get("kind") == "pool" else (1 if p.get("proxy") else 0)
+
+
+def proxies_of_profile(p):
+    if p.get("kind") == "pool":
+        return list(p.get("proxies") or [])
+    return [p["proxy"]] if p.get("proxy") else []
+
+
+def redact(url):
+    """http://user:pass@host:port -> http://user:***@host:port (hide password)."""
+    return re.sub(r"(://[^:/@]+:)[^@]+@", r"\1***@", url)
+
+
+CHECK_URL = "https://api.ipify.org"  # returns the exit IP as plain text
+
+
+def check_proxy(url, timeout=10):
+    """Probe a proxy by fetching CHECK_URL through it. Returns (alive, info=IP|error).
+    Uses curl (in the Nix wrapper's PATH; system curl otherwise)."""
+    try:
+        r = subprocess.run(
+            ["curl", "-sS", "--max-time", str(timeout), "-x", url, CHECK_URL],
+            capture_output=True, text=True, timeout=timeout + 5,
+        )
+    except Exception as e:
+        return False, str(e)[:48]
+    ip = r.stdout.strip()
+    if r.returncode == 0 and ip:
+        return True, ip
+    err = r.stderr.strip().splitlines()[-1][:48] if r.stderr.strip() else f"rc={r.returncode}"
+    return False, err
+
+
+# --- rendering --------------------------------------------------------------
+
+def base_env(pid, p):
+    # Non-secret env, rendered inline as -e (visible in docker inspect). Fleet
+    # defaults mirror the legacy single-container module (identity on, crash off,
+    # 2GB V8 heap vs the image's 128MB default). Per-profile [profiles.x.env]
+    # overrides/extends (e.g. CAMOFOX_DISPLAY_RESOLUTION, BROWSER_IDLE_TIMEOUT_MS).
+    env = {
+        "ENABLE_IDENTITY": "1",
+        "CAMOFOX_CRASH_REPORT_ENABLED": "false",
+        "MAX_OLD_SPACE_SIZE": "2048",
+    }
+    if p.get("country"):
+        env["PROXY_COUNTRY"] = p["country"]
+    if p.get("localeFollowsProxy"):
+        env["CAMOFOX_LOCALE_FOLLOWS_PROXY"] = "1"
+    for k, v in (p.get("env") or {}).items():
+        env[str(k)] = str(v)
+    return env
+
+
+def secret_env(pid, p):
+    """Env vars carrying credentials -> per-profile --env-file (0600).
+
+    PROXY_URLS is comma-joined (NOT newline): docker --env-file is line-oriented,
+    so the whole value must sit on one line. The engine's parseProxyList splits on
+    commas and newlines alike, so commas are the env-file-safe separator.
+    """
+    if p.get("kind") == "pool":
+        urls = p.get("proxies") or []
+        return {"PROXY_URLS": ",".join(urls)} if urls else {}
+    return {"PROXY_URL": p["proxy"]} if p.get("proxy") else {}
+
+
+def unit_text(pid, p):
+    name = f"camofox-{pid}"
+    envfile = f"{RUN_ENV_DIR}/{pid}.env"
+    inline = " ".join(f"-e {k}={v}" for k, v in base_env(pid, p).items())
+    exec_start = (
+        f"/usr/bin/env docker run --rm --name {name} --shm-size=2g "
+        f"-p 127.0.0.1:{p.get('port')}:9377 "
+        f"-v {DATA_ROOT}/{pid}:/root/.camofox "
+        f"--env-file {envfile} {inline} {IMAGE}"
+    )
+    return (
+        f"# {UNIT_DIR}/docker-{name}.service  (generated by proxyctl — do not hand-edit)\n"
+        "[Unit]\n"
+        f"Description=camofox profile {pid} ({p.get('kind')}, {p.get('country', '-')})\n"
+        "After=docker.service\n"
+        "Requires=docker.service\n\n"
+        "[Service]\n"
+        f"ExecStartPre=-/usr/bin/env docker rm -f {name}\n"
+        f"ExecStart={exec_start}\n"
+        f"ExecStop=/usr/bin/env docker stop {name}\n"
+        "Restart=always\n"
+        "RestartSec=5\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+
+
+def envfile_text(pid, p):
+    return "".join(f"{k}={v}\n" for k, v in secret_env(pid, p).items())
+
+
+# --- commands ---------------------------------------------------------------
+
+def running_containers():
+    try:
+        out = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return {l.strip() for l in out.stdout.splitlines()}
+    except Exception:
+        return set()
+
+
+def cmd_ls(args):
+    profs = profiles_of(load(args.file))
+    running = running_containers()
+    print(f"{'ID':<16}{'KIND':<8}{'CC':<4}{'PORT':<7}{'PROXIES':<8}{'STATUS'}")
+    for pid, p in profs.items():
+        status = "up" if f"camofox-{pid}" in running else "down"
+        print(f"{pid:<16}{p.get('kind', ''):<8}{p.get('country', ''):<4}"
+              f"{str(p.get('port', '')):<7}{proxy_count(p):<8}{status}")
+    return 0
+
+
+def cmd_generate(args):
+    profs = profiles_of(load(args.file))
+    issues = validate(profs)
+    for level, pid, msg in issues:
+        print(f"# {level.upper()} [{pid}]: {msg}", file=sys.stderr)
+    if any(l == "error" for l, _, _ in issues):
+        print("# refusing to generate: fix errors above", file=sys.stderr)
+        return 1
+    for pid, p in profs.items():
+        print(f"===== {UNIT_DIR}/docker-camofox-{pid}.service =====")
+        print(unit_text(pid, p))
+        ef = envfile_text(pid, p)
+        print(f"===== {RUN_ENV_DIR}/{pid}.env  (0600, SECRET) =====")
+        print(ef if ef else "(no proxy configured)\n")
+    if not args.write:
+        print("# DRY-RUN: nothing written to the host (--write is not implemented in step 1).")
+    else:
+        print("# --write is not implemented in step 1; refusing.", file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_validate(args):
+    issues = validate(profiles_of(load(args.file)))
+    for level, pid, msg in issues:
+        print(f"{level.upper()} [{pid}]: {msg}")
+    errors = sum(1 for l, _, _ in issues if l == "error")
+    print(f"{len(issues)} issue(s), {errors} error(s)")
+    return 1 if errors else 0
+
+
+# --- apply: imperative docker reconcile (no systemd, no Nix ownership) --------
+#
+# docker itself supervises (`--restart=unless-stopped`), so containers survive
+# reboot without systemd units. A rebuild never touches them or /var/lib/camofox.
+# Each container carries labels: camofox.managed=1 + camofox.spec=<hash>. Reconcile
+# diffs desired (toml) vs actual (labels): create missing, remove orphaned,
+# RECREATE when the spec hash changed (proxy/port/country swap). The data volume
+# (/var/lib/camofox/<id>) is a host bind mount, so identity/cookies survive recreate.
+
+def spec_of(pid, p):
+    # Everything that defines the container -> any change flips the hash -> recreate.
+    env = dict(base_env(pid, p))
+    env.update(secret_env(pid, p))
+    return {"image": IMAGE, "port": p.get("port"), "env": env}
+
+
+def spec_hash(s):
+    return hashlib.sha256(json.dumps(s, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def run_cmd(pid, p, h):
+    name = f"camofox-{pid}"
+    envfile = f"{RUN_ENV_DIR}/{pid}.env"
+    # build as an arg list (no shell); non-secret env inline, secret proxy via --env-file
+    args = ["docker", "run", "-d", "--restart=unless-stopped", "--name", name,
+            "--shm-size=2g",
+            "--label", "camofox.managed=1", "--label", f"camofox.spec={h}",
+            "-p", f"127.0.0.1:{p.get('port')}:9377",
+            "-v", f"{DATA_ROOT}/{pid}:/root/.camofox",
+            "--env-file", envfile]
+    for k, v in base_env(pid, p).items():
+        args += ["-e", f"{k}={v}"]
+    args.append(IMAGE)
+    return args
+
+
+def actual_managed():
+    try:
+        out = subprocess.run(
+            ["docker", "ps", "-a", "--filter", "label=camofox.managed=1",
+             "--format", '{{.Names}}\t{{.Label "camofox.spec"}}'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception as e:
+        print(f"# docker unavailable: {e}", file=sys.stderr)
+        return {}
+    res = {}
+    for line in out.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2:
+            res[parts[0]] = parts[1]
+    return res
+
+
+def image_exists(image):
+    try:
+        return subprocess.run(["docker", "image", "inspect", image],
+                              capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+def cmd_apply(args):
+    profs = profiles_of(load(args.file))
+    issues = validate(profs)
+    for level, pid, msg in issues:
+        print(f"# {level.upper()} [{pid}]: {msg}", file=sys.stderr)
+    if any(l == "error" for l, _, _ in issues):
+        print("# refusing to apply: fix errors above", file=sys.stderr)
+        return 1
+
+    desired = {f"camofox-{pid}": (pid, p, spec_hash(spec_of(pid, p))) for pid, p in profs.items()}
+    actual = actual_managed()
+
+    create = [n for n in desired if n not in actual]
+    orphan = [n for n in actual if n not in desired]
+    recreate = [n for n in desired if n in actual and actual[n] != desired[n][2]]
+    unchanged = [n for n in desired if n in actual and actual[n] == desired[n][2]]
+    # SAFETY: orphans (managed containers absent from the toml) are only removed
+    # with --prune. Default keeps them, so pointing at the wrong file can't wipe a
+    # profile (dry-run + explicit prune are two guards).
+    remove = orphan if getattr(args, "prune", False) else []
+
+    print(f"# plan: create={len(create)} recreate={len(recreate)} "
+          f"remove={len(remove)} unchanged={len(unchanged)} orphan={len(orphan)}")
+    for n in create:
+        print(f"  + create  {n}")
+    for n in recreate:
+        print(f"  ~ recreate {n} (spec changed; volume/identity preserved)")
+    for n in remove:
+        print(f"  - remove  {n}")
+    for n in orphan:
+        if n not in remove:
+            print(f"  ! orphan  {n} (not in toml; kept — pass --prune to remove)")
+    for n in unchanged:
+        print(f"  = keep    {n}")
+
+    if not args.apply:
+        print("# DRY-RUN: no host changes. Re-run with --apply to converge.")
+        return 0
+
+    os.makedirs(RUN_ENV_DIR, mode=0o700, exist_ok=True)
+    for n in remove:
+        subprocess.run(["docker", "rm", "-f", n], check=False)
+    to_run = create + recreate
+    # Fresh hardware: on the first switch the fleet unit runs BEFORE deploy.sh has
+    # built the image. Rather than fail (or silently error each docker run), defer
+    # creates cleanly -- the post-build `systemctl restart camofox-apply` re-runs us
+    # once the image exists. Removes above don't need the image, so they still apply.
+    if to_run and not image_exists(IMAGE):
+        print(f"# image {IMAGE} not present yet — deferred create/recreate of "
+              f"{len(to_run)} container(s) (build the image, then re-run apply). "
+              f"removed {len(remove)}.")
+        return 0
+    for n in to_run:
+        pid, p, h = desired[n]
+        ef = f"{RUN_ENV_DIR}/{pid}.env"
+        with open(os.open(ef, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            f.write(envfile_text(pid, p))
+        os.makedirs(f"{DATA_ROOT}/{pid}", exist_ok=True)
+        subprocess.run(["docker", "rm", "-f", n], check=False)
+        subprocess.run(run_cmd(pid, p, h), check=False)
+    print(f"# applied: {len(create)} created, {len(recreate)} recreated, {len(remove)} removed")
+    return 0
+
+
+def cmd_health(args):
+    doc = load(args.file)
+    profs = profiles_of(doc)
+    spares = doc.get("spares", {}) or {}
+    print(f"{'PROFILE':<16}{'CC':<4}{'PROXY':<46}STATUS")
+    dead = 0
+    for pid, p in profs.items():
+        for url in proxies_of_profile(p):
+            alive, info = check_proxy(url, args.timeout)
+            dead += 0 if alive else 1
+            print(f"{pid:<16}{p.get('country', ''):<4}{redact(url):<46}"
+                  f"{'alive ' + info if alive else 'DEAD (' + info + ')'}")
+    for cc, urls in spares.items():
+        for url in urls:
+            alive, info = check_proxy(url, args.timeout)
+            print(f"{'(spare)':<16}{cc:<4}{redact(url):<46}{'alive' if alive else 'DEAD (' + info + ')'}")
+    print(f"# {dead} dead profile proxy(ies)")
+    return 1 if dead else 0
+
+
+def cmd_heal(args):
+    doc = load(args.file)
+    profs = profiles_of(doc)
+    spares = doc.get("spares", {}) or {}
+    in_use = {u for p in profs.values() for u in proxies_of_profile(p)}
+    text = open(args.file, encoding="utf-8").read()
+
+    swaps = []          # (pid, cc, dead_url, spare_url)
+    claimed = set()     # spares chosen in this run
+    for pid, p in profs.items():
+        cc = p.get("country", "")
+        for dead in proxies_of_profile(p):
+            alive, _ = check_proxy(dead, args.timeout)
+            if alive:
+                continue
+            spare = None
+            for cand in spares.get(cc, []):
+                # skip spares already promoted into a profile (any run) or this run
+                if cand in in_use or cand in claimed:
+                    continue
+                ok, _ = check_proxy(cand, args.timeout)
+                if ok:
+                    spare = cand
+                    break
+            if not spare:
+                print(f"# {pid}: dead {redact(dead)} — no live {cc or '?'} spare", file=sys.stderr)
+                continue
+            claimed.add(spare)
+            swaps.append((pid, cc, dead, spare))
+
+    if not swaps:
+        print("# nothing to heal (no dead proxies with an available live spare)")
+        return 0
+    for pid, cc, dead, spare in swaps:
+        print(f"# heal {pid} [{cc}]: {redact(dead)} -> {redact(spare)}")
+    if not args.apply:
+        print("# DRY-RUN: no changes. Re-run with --apply to rewrite toml + reconcile.")
+        return 0
+
+    for _, _, dead, spare in swaps:
+        text = text.replace(dead, spare, 1)  # exact-string swap; preserves formatting/comments
+    shutil.copy2(args.file, args.file + ".bak")
+    fd = os.open(args.file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with open(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"# rewrote {args.file} ({len(swaps)} swap(s); backup .bak). "
+          f"Promoted spares stay listed but are skipped (in-use).")
+    # heal only swaps a proxy in-place -> never prune (no orphans expected anyway)
+    return cmd_apply(argparse.Namespace(file=args.file, apply=True, prune=False))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="proxyctl", description="camofox profile/proxy manager")
+    ap.add_argument("-f", "--file", default="camofox-profiles.toml", help="profiles toml (decrypted)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("ls", help="list profiles + live container status")
+    g = sub.add_parser("generate", help="render systemd units + env-files (alt backend; dry-run)")
+    g.add_argument("--write", action="store_true", help="(step 1: refused) write to host")
+    a = sub.add_parser("apply", help="reconcile docker containers to the toml")
+    a.add_argument("--apply", action="store_true", help="execute (default: dry-run)")
+    a.add_argument("--prune", action="store_true", help="also remove containers not in the toml")
+    hp = sub.add_parser("health", help="probe each proxy through itself (alive/dead)")
+    hp.add_argument("--timeout", type=int, default=10, help="per-proxy timeout (s)")
+    hl = sub.add_parser("heal", help="replace dead proxies with live same-country spares")
+    hl.add_argument("--timeout", type=int, default=10, help="per-proxy timeout (s)")
+    hl.add_argument("--apply", action="store_true", help="execute (rewrite toml + reconcile)")
+    sub.add_parser("validate", help="check the profiles toml")
+    args = ap.parse_args(argv)
+    return {"ls": cmd_ls, "generate": cmd_generate, "apply": cmd_apply,
+            "health": cmd_health, "heal": cmd_heal, "validate": cmd_validate}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

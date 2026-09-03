@@ -1,0 +1,24 @@
+# camofox profiles — example (NON-secret; real file is sops-encrypted whole).
+# One container per profile: own identity (fingerprint) + own proxy/pool + own port.
+# Country is the container boundary (geoip is launch-bound; never mix countries in a pool).
+
+[profiles.acct-bob]
+kind    = "sticky"          # sticky = one proxy, stable identity<->IP (logins)
+country = "DE"
+port    = 9401
+proxy   = "http://user:pass@de-host:11001"
+
+[profiles.parse-si]
+kind    = "pool"           # pool = list of same-country proxies, rotated per session (parsing)
+country = "SI"
+port    = 9402
+proxies = [
+  "http://user:pass@si-host-a:11001",
+  "http://user:pass@si-host-b:11002",
+]
+localeFollowsProxy = true  # optional: re-home navigator.language to country each launch
+
+[spares]
+# live backups per country, consumed by `proxyctl heal`
+SI = [ "http://user:pass@si-host-spare:11001" ]
+DE = [ "http://user:pass@de-host-spare:11001" ]

@@ -1,5 +1,5 @@
 /**
- * Tests for default virtual-display resolution parsing (FIXES.md #5). Pure fn.
+ * Tests for default virtual-display resolution parsing (fork change #5). Pure fn.
  */
 import { describe, test, expect } from '@jest/globals';
 import { normalizeDisplayResolution, DEFAULT_DISPLAY_RESOLUTION } from '../../lib/display.js';

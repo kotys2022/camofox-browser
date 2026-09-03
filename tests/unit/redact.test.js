@@ -1,5 +1,5 @@
 /**
- * Tests for tool-arg redaction/truncation (FIXES.md #7). Pure functions.
+ * Tests for tool-arg redaction/truncation (fork change #7). Pure functions.
  */
 import { describe, test, expect } from '@jest/globals';
 import { redactSecrets, redactToolArg } from '../../lib/redact.js';

@@ -4,7 +4,7 @@
  * Persists and re-injects a stable browser fingerprint across every launch so a
  * profile keeps the same identity after idle-kill, crash, or container restart.
  *
- * Why this exists (see FIXES.md #0):
+ * Why this exists (see fork change #0):
  *   camoufox-js generates a *fresh* random fingerprint on every firefox.launch()
  *   unless launchOptions() is given an explicit `fingerprint` (and matching noise
  *   `config`). With BROWSER_IDLE_TIMEOUT_MS the browser relaunches *inside* a live

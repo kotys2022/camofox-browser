@@ -1,5 +1,5 @@
 /**
- * Tests for evaluate result shaping (projection + byte cap) -- FIXES.md #2.
+ * Tests for evaluate result shaping (projection + byte cap) -- fork change #2.
  * Pure functions, no server spawn.
  */
 import { describe, test, expect } from '@jest/globals';

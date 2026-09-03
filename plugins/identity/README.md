@@ -3,7 +3,7 @@
 Persists and re-injects a **stable browser fingerprint** across every launch, so a
 profile keeps the same identity after idle-kill, crash, or container restart.
 
-Implements FIXES.md **#0**.
+Implements fork change **#0**.
 
 ## The problem
 
@@ -71,7 +71,7 @@ verified stable across an idle-kill relaunch by `scripts/verify-identity-e2e.sh`
 ```
 
 Or via environment: `CAMOFOX_FINGERPRINT_FILE=/root/.camofox/slot/identity.json`.
-The plugin can also be activated by env var alone (FIXES.md **#1**): set
+The plugin can also be activated by env var alone (fork change **#1**): set
 `ENABLE_IDENTITY=1` to load it without listing it in `plugins{}`.
 
 If `fingerprintFile` is omitted it defaults to `<profileDir>/identity.json`.

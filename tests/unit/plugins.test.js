@@ -184,7 +184,7 @@ describe('lib/plugins', () => {
     test('env gate reads ctx.config.pluginEnv when options.env is absent (#1 prod path)', async () => {
       // In production loadPlugins is called without options.env; the env-gate
       // must fall back to ctx.config.pluginEnv (which config.js sets to the full
-      // process.env). Before FIXES.md #1 that map only held ENABLE_VNC, so no
+      // process.env). Before fork change #1 that map only held ENABLE_VNC, so no
       // other plugin could be enabled by its env var.
       const pluginsDir = path.join(tmpDir, 'plugins');
       const configPath = path.join(tmpDir, 'camofox.config.json');

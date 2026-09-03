@@ -1,5 +1,5 @@
 /**
- * Tests for the waitFor readiness-spec normalizer (FIXES.md #4). Pure function.
+ * Tests for the waitFor readiness-spec normalizer (fork change #4). Pure function.
  */
 import { describe, test, expect } from '@jest/globals';
 import { normalizeWaitFor } from '../../lib/wait-for.js';

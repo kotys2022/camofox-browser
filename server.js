@@ -684,7 +684,7 @@ if (proxyPool) {
 }
 
 const BROWSER_IDLE_TIMEOUT_MS = CONFIG.browserIdleTimeoutMs;
-// Keep-warm (FIXES.md #8): BROWSER_IDLE_TIMEOUT_MS=0 disables idle shutdown and
+// Keep-warm (fork change #8): BROWSER_IDLE_TIMEOUT_MS=0 disables idle shutdown and
 // enables proactive re-warm after an unexpected close.
 const BROWSER_KEEP_WARM = isKeepWarm(BROWSER_IDLE_TIMEOUT_MS);
 let browserIdleTimer = null;
@@ -855,7 +855,7 @@ function getTotalTabCount() {
 // Virtual display for WebGL support and anti-detection.
 // Xvfb gives Firefox a real X display with GLX, enabling software-rendered WebGL
 // via Mesa llvmpipe. Without this, WebGL returns "no context" -- a massive bot signal.
-// Configurable via CAMOFOX_DISPLAY_RESOLUTION (FIXES.md #5); defaults to 1280x720x24.
+// Configurable via CAMOFOX_DISPLAY_RESOLUTION (fork change #5); defaults to 1280x720x24.
 const DEFAULT_VIRTUAL_DISPLAY_RESOLUTION = CONFIG.displayResolution;
 
 class DefaultVirtualDisplay extends VirtualDisplay {
@@ -2066,7 +2066,7 @@ function waitForNetworkQuiet(page, quietMs, timeoutMs) {
   });
 }
 
-// Block until a declared readiness condition holds (FIXES.md #4). Never throws
+// Block until a declared readiness condition holds (fork change #4). Never throws
 // on timeout -- returns {matched:false, timedOut:true} so navigation still
 // succeeds and the caller can decide. `spec` is a normalizeWaitFor() output.
 async function applyWaitFor(page, spec) {
@@ -3410,7 +3410,7 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId required' });
     const format = req.query.format || 'text';
     const offset = parseInt(req.query.offset) || 0;
-    // Accept `screenshot` as an alias for `includeScreenshot` (FIXES.md #6) --
+    // Accept `screenshot` as an alias for `includeScreenshot` (fork change #6) --
     // agents reach for the shorter name and would otherwise silently get no image.
     const wantScreenshot = req.query.includeScreenshot === 'true' || req.query.screenshot === 'true';
     const session = sessions.get(normalizeUserId(userId));
@@ -6522,7 +6522,7 @@ app.get('/snapshot', async (req, res) => {
   try {
     const { targetId, userId, format = 'text' } = req.query;
     const offset = parseInt(req.query.offset) || 0;
-    // `screenshot` is an alias for `includeScreenshot` (FIXES.md #6).
+    // `screenshot` is an alias for `includeScreenshot` (fork change #6).
     const wantScreenshot = req.query.includeScreenshot === 'true' || req.query.screenshot === 'true';
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' });

@@ -1,5 +1,5 @@
 /**
- * Tests for the capture-response URL matcher (FIXES.md #3). Pure function.
+ * Tests for the capture-response URL matcher (fork change #3). Pure function.
  */
 import { describe, test, expect } from '@jest/globals';
 import { buildUrlMatcher } from '../../lib/capture.js';

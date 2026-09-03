@@ -63,7 +63,7 @@ const SEARCH_MACROS = [
   '@twitch_search',
 ];
 
-// Shared readiness contract for navigate/create_tab (FIXES.md #4). networkidle
+// Shared readiness contract for navigate/create_tab (fork change #4). networkidle
 // often never settles on SPAs; declare the real ready condition instead.
 const WAIT_FOR_SCHEMA = {
   type: 'object',

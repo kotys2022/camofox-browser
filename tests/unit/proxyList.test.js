@@ -1,5 +1,5 @@
 /**
- * Tests for the proxy-pool 'list' mode (FIXES.md #10): a pool of distinct
+ * Tests for the proxy-pool 'list' mode (fork change #10): a pool of distinct
  * full-proxy endpoints rotated per context.
  */
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';

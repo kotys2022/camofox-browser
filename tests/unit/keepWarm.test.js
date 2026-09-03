@@ -1,5 +1,5 @@
 /**
- * Tests for keep-warm decision logic (FIXES.md #8). Pure functions.
+ * Tests for keep-warm decision logic (fork change #8). Pure functions.
  */
 import { describe, test, expect } from '@jest/globals';
 import { isKeepWarm, shouldRewarmAfterClose } from '../../lib/keep-warm.js';

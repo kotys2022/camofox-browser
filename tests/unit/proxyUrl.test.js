@@ -1,5 +1,5 @@
 /**
- * Tests for the PROXY_URL parser (FIXES.md #9). Pure function.
+ * Tests for the PROXY_URL parser (fork change #9). Pure function.
  */
 import { describe, test, expect } from '@jest/globals';
 import { parseProxyUrl } from '../../lib/config.js';

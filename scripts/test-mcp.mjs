@@ -28,6 +28,8 @@ const EXPECTED_TOOLS = [
   "camofox_import_cookies",
   "camofox_capture_response",
   "camofox_list_profiles",
+  "camofox_use_profile",
+  "camofox_current_profile",
 ];
 
 const proc = spawn(process.execPath, [SERVER], {
@@ -112,7 +114,7 @@ async function main() {
   const list = await call("tools/list", {});
   const tools = list.result.tools;
   const names = tools.map((t) => t.name).sort();
-  check("lists exactly 13 tools", tools.length === 13, `got ${tools.length}`);
+  check("lists exactly 15 tools", tools.length === 15, `got ${tools.length}`);
   check("tool names match expected", names.join(",") === [...EXPECTED_TOOLS].sort().join(","), `got: ${names.join(",")}`);
 
   for (const t of tools) {

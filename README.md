@@ -284,7 +284,7 @@ make up VERSION=135.0.1 RELEASE=beta.24
 
 The standalone MCP adapter lives in [`mcp/`](mcp/) and is built from source. It exposes the browser to any MCP-compatible host (Claude Code, Cursor, Hermes, …) by forwarding to the REST server.
 
-**Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`  |  `camofox_capture_response`  |  `camofox_list_profiles`
+**Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`  |  `camofox_capture_response`  |  `camofox_list_profiles`  |  `camofox_use_profile`  |  `camofox_current_profile`
 
 The REST server must be running; the MCP server only forwards calls (`CAMOFOX_BASE_URL` points it at the REST server). See [`mcp/README.md`](mcp/README.md) for host wiring.
 

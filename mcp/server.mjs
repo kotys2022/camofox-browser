@@ -51,30 +51,75 @@ const USER_ID = process.env.CAMOFOX_USER_ID || `mcp-${randomUUID()}`;
 // sessionKey partitions tabs within a user (matches plugin.ts fallback "default").
 const SESSION_KEY = process.env.CAMOFOX_SESSION_KEY || "default";
 
-// Adapter-LOCAL tools (not REST-proxied). Fleet discovery: read the sanitized
-// registry proxyctl writes on the host (id/port/country/hasProxy/loggedIn/status —
-// no creds). The REST server can't serve this: a container only sees its own
-// profile. To ACT as a profile, point a separate MCP server at it
-// (CAMOFOX_BASE_URL=<baseUrl>, CAMOFOX_USER_ID=<id>).
+// Adapter-LOCAL tools (not REST-proxied) + per-call profile routing (level 2).
+// The sanitized registry proxyctl writes on the host (id/port/country/hasProxy/
+// loggedIn/status — no creds) is read here; the REST server can't serve it (a
+// container only sees its own profile). `camofox_use_profile` switches the ACTIVE
+// routing (baseUrl + userId) so subsequent REST tools hit that profile's browser
+// — one adapter drives the whole fleet, no per-profile MCP registration needed.
 const REGISTRY_FILE = process.env.CAMOFOX_REGISTRY_FILE || "/run/camofox-registry.json";
+
+// Mutable active routing (per MCP-server process = per host session). Defaults to
+// the env-configured profile; use_profile overrides it.
+let activeBaseUrl = BASE_URL;
+let activeUserId = USER_ID;
+
+function readRegistry() {
+  return JSON.parse(readFileSync(REGISTRY_FILE, "utf8"));
+}
+
 const LOCAL_TOOLS = [
   {
     name: "camofox_list_profiles",
     description:
-      "List camofox fleet profiles (id, port, country, hasProxy, loggedIn, status) so you can pick one. Each profile is a separate browser with its own proxy/identity and possibly a saved login; reach a specific one via an MCP server configured with CAMOFOX_BASE_URL=<baseUrl> + CAMOFOX_USER_ID=<id>.",
+      "List camofox fleet profiles (id, port, country, hasProxy, loggedIn, status). Each is a separate browser with its own proxy/identity and possibly a saved login. Use camofox_use_profile to switch to one.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "camofox_use_profile",
+    description:
+      "Switch the ACTIVE profile for subsequent tools: routes calls to that profile's browser (its proxy/identity/login) using its userId. Pass the `profile` id from camofox_list_profiles. Tabs are per-profile — switching starts fresh (old tabIds won't apply). Default profile is used until you call this.",
+    inputSchema: {
+      type: "object",
+      properties: { profile: { type: "string", description: "profile id (from camofox_list_profiles)" } },
+      required: ["profile"],
+    },
+  },
+  {
+    name: "camofox_current_profile",
+    description: "Show the currently active routing (baseUrl + userId).",
     inputSchema: { type: "object", properties: {} },
   },
 ];
 
-function handleLocalTool(name) {
-  if (name !== "camofox_list_profiles") return null;
-  try {
-    return { content: [{ type: "text", text: readFileSync(REGISTRY_FILE, "utf8") }] };
-  } catch (err) {
-    return {
-      content: [{ type: "text", text: JSON.stringify({ error: `registry unavailable: ${err.message}`, path: REGISTRY_FILE }) }],
-    };
+function handleLocalTool(name, args) {
+  if (name === "camofox_list_profiles") {
+    try {
+      return { content: [{ type: "text", text: readFileSync(REGISTRY_FILE, "utf8") }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: `registry unavailable: ${err.message}`, path: REGISTRY_FILE }) }] };
+    }
   }
+  if (name === "camofox_current_profile") {
+    return { content: [{ type: "text", text: JSON.stringify({ baseUrl: activeBaseUrl, userId: activeUserId }) }] };
+  }
+  if (name === "camofox_use_profile") {
+    const pid = (args && args.profile) || "";
+    let reg;
+    try {
+      reg = readRegistry();
+    } catch (err) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: `registry unavailable: ${err.message}` }) }] };
+    }
+    const entry = reg.find((p) => p.id === pid);
+    if (!entry) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: `unknown profile '${pid}'`, available: reg.map((p) => p.id) }) }] };
+    }
+    activeBaseUrl = entry.baseUrl || `http://127.0.0.1:${entry.port}`;
+    activeUserId = entry.userId || entry.id;
+    return { content: [{ type: "text", text: JSON.stringify({ active: entry.id, baseUrl: activeBaseUrl, userId: activeUserId, loggedIn: entry.loggedIn }) }] };
+  }
+  return null;
 }
 
 // The standalone package declares the SDK directly. Surface a clear,
@@ -115,7 +160,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
-  const local = handleLocalTool(name);
+  const local = handleLocalTool(name, args);
   if (local) return local;
   const def = TOOL_DEFS.find((t) => t.name === name);
   if (!def) {
@@ -128,8 +173,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { spec, payload } = await runTool(
       name,
       args || {},
-      { userId: USER_ID, sessionKey: SESSION_KEY },
-      BASE_URL,
+      { userId: activeUserId, sessionKey: SESSION_KEY },
+      activeBaseUrl,
       CONFIG
     );
     const content = adaptResponse(spec, payload);

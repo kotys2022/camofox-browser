@@ -193,6 +193,21 @@ See [`nix/camofox-manager/USAGE.md`](nix/camofox-manager/USAGE.md) for the full 
 
 > **Secrets stay out of git.** Only [`profiles.example.toml`](nix/camofox-manager/profiles.example.toml) (placeholders) is committed. The real `profiles.toml` and every profile's identity/cookies live in `/var/lib/camofox`, outside the repo.
 
+### Interactive profile menu (`camofox-profile.sh`)
+
+[`camofox-profile.sh`](camofox-profile.sh) (repo root) is a **thin interactive wrapper over `proxyctl`** for operators who prefer a menu to hand-editing TOML. It only collects answers and generates/removes the `[profiles.<id>]` block — all TOML validation, `apply`, and container reconciliation are delegated to `proxyctl` (it never parses TOML for writing).
+
+```bash
+sudo bash camofox-profile.sh    # needs proxyctl on PATH (installed by the module) + sudo
+```
+
+Menu: **List / Create / Edit / Delete / Health**. Highlights:
+
+- **Guided proxy setup** — direct / single proxy / same-country pool; paste a full `scheme://user:pass@host:port` URL at any prompt; optional `country` and `localeFollowsProxy`.
+- **Port safety** — auto-suggests a free port and rejects one already used by another profile (TOML) or bound on the host (a foreign container/process).
+- **Validate-before-commit** — the new content is validated in a temp file and only written to `profiles.toml` if valid, then applied. A single `Створити/оновити й застосувати?` confirm; declining leaves the file untouched (no half-applied state).
+- **VNC cookie capture (login)** — offered after `apply` in Create/Edit. It temporarily runs a VNC-enabled container on the profile's volume (`--network host`, noVNC on loopback `:6080`), opens the login URL, and prints `http://127.0.0.1:6080/vnc.html`. You log in visually (MFA/CAPTCHA included); on `Enter` the authenticated `storage-state.json` is persisted into the profile volume. Future sessions of that profile using `userId=<profile id>` are then already logged in (via the persistence plugin). Keyed by userId, so use the same `userId` for authenticated work.
+
 ## Profile & identity model
 
 The fleet model is **1 image → N profile-containers**: one Docker image, many long-lived containers, each a fully isolated browser profile.

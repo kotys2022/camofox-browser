@@ -99,7 +99,7 @@ A full rundown of what the server can do. Items marked **(fork)** are additions 
 - **Download capture** — capture browser downloads and fetch them via API (optional inline base64).
 
 ### Interfaces & deployment
-- **REST + MCP** — a REST API plus an MCP/plugin adapter (OpenClaw).
+- **REST + MCP** — a REST API plus a standalone MCP adapter for MCP-compatible hosts.
 - **OpenAPI docs** — auto-generated `/openapi.json` and interactive `/docs`.
 - **Deploy anywhere** — Docker, Fly.io, Railway.
 
@@ -113,11 +113,11 @@ The Docker image includes yt-dlp. For local dev, install it for the `/youtube/tr
 
 ## Quick Start
 
-### OpenClaw Plugin
+### MCP Adapter
 
-The MCP/OpenClaw adapter lives in [`mcp/`](mcp/) and is built from source (this fork is not published to the OpenClaw registry).
+The standalone MCP adapter lives in [`mcp/`](mcp/) and is built from source. It exposes the browser to any MCP-compatible host (Claude Code, Cursor, etc.) by forwarding to the REST server.
 
-**Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`
+**Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`  |  `camofox_capture_response`
 
 ### Standalone
 
@@ -196,16 +196,16 @@ Import cookies from your browser into Camoufox to skip interactive login on site
 openssl rand -hex 32
 ```
 
-**2. Set the environment variable before starting OpenClaw:**
+**2. Set the environment variable before starting the server:**
 
 ```bash
 export CAMOFOX_API_KEY="your-generated-key"
-openclaw start
+npm start
 ```
 
-The same key is used by both the plugin (to authenticate requests) and the server (to verify them). Both run from the same environment -- set it once.
+The same key is used by both the client (to authenticate requests) and the server (to verify them). Both run from the same environment -- set it once.
 
-> **Why an env var?** The key is a secret. Plugin config in `openclaw.json` is stored in plaintext, so secrets don't belong there. Set `CAMOFOX_API_KEY` in your shell profile, systemd unit, Docker env, or Fly.io secrets.
+> **Why an env var?** The key is a secret. Set `CAMOFOX_API_KEY` in your shell profile, systemd unit, Docker env, or Fly.io secrets -- not in a plaintext config file.
 
 > **Cookie import is disabled by default.** If `CAMOFOX_API_KEY` is not set, the server rejects all cookie requests with 403.
 

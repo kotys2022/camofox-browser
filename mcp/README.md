@@ -1,8 +1,8 @@
 # camofox-browser MCP server
 
-A standalone [Model Context Protocol](https://modelcontextprotocol.io) server that exposes camofox-browser to any MCP-compatible host — Claude Code, Cursor, etc. — without requiring OpenClaw.
+A standalone [Model Context Protocol](https://modelcontextprotocol.io) server that exposes camofox-browser to any MCP-compatible host — Claude Code, Cursor, etc.
 
-It mirrors the existing OpenClaw plugin **1:1**: same 11 tool names, identical JSON-Schema parameters, and the same REST routes. Whether an agent reaches camofox via OpenClaw or MCP, the behavior is identical.
+It exposes the browser's full tool surface: the tool names, JSON-Schema parameters, and REST routes are the canonical contract used by the server, so behavior is identical whether an agent reaches camofox via MCP or the raw REST API.
 
 The initial MCP server implementation was contributed by [@epicsagas](https://github.com/epicsagas).
 
@@ -15,7 +15,7 @@ The MCP server is a thin stdio client over the camofox REST server. Two pieces:
 
 Registering the MCP server does **not** require being inside the camofox-browser checkout. The examples below work from any directory.
 
-`mcp/` is also an **independently installable package** (`@askjo/camofox-browser-mcp`, its own `package.json`). It depends on nothing but `@modelcontextprotocol/sdk` — no `camoufox-js`, `playwright-core`, `express`, or the ~300MB browser binary download that the core server pulls in. Tool names, JSON-Schema parameters, REST routes, and response shaping are defined in `mcp/lib/tool-contracts.mjs`, which ships inside the standalone package. The OpenClaw plugin (`plugin.ts`) imports the same canonical module, so the two hosts cannot drift. See **Option D** below if you only want the MCP adapter (e.g. pointing `CAMOFOX_BASE_URL` at a REST server running elsewhere).
+`mcp/` is also an **independently installable package** (`@askjo/camofox-browser-mcp`, its own `package.json`). It depends on nothing but `@modelcontextprotocol/sdk` — no `camoufox-js`, `playwright-core`, `express`, or the ~300MB browser binary download that the core server pulls in. Tool names, JSON-Schema parameters, REST routes, and response shaping are defined in `mcp/lib/tool-contracts.mjs`, which ships inside the standalone package and is the single source of truth for the tool contract. See **Option D** below if you only want the MCP adapter (e.g. pointing `CAMOFOX_BASE_URL` at a REST server running elsewhere).
 
 ## 1. Start the REST server
 
@@ -233,8 +233,8 @@ npm run test:mcp
 #    produces: routes, methods, request bodies, CAMOFOX_ACCESS_KEY/CAMOFOX_API_KEY
 #    auth headers, cookie parsing (Netscape file → `{ cookies }` body, never a
 #    path), screenshot decoding, and error handling. Mocked REST server — no
-#    live camofox-browser process needed. This is what makes the "OpenClaw and
-#    MCP send identical requests" claim verifiable, not just asserted.
+#    live camofox-browser process needed. This is what makes the "MCP sends the
+#    expected REST requests" claim verifiable, not just asserted.
 NODE_OPTIONS='--experimental-vm-modules' npx jest tests/unit/mcp-contracts.test.js
 ```
 

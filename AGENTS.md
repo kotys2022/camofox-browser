@@ -446,7 +446,7 @@ Both are run by `scripts/install-plugin-deps.sh` during Docker build.
 
 - **`plugins`** -- array of plugin directory names to load. Only these are loaded at startup and have deps installed during build.
 - If the file is missing or has no `plugins` key, **all** plugins in `plugins/` are loaded (backward-compatible).
-- This is camofox's own config. `openclaw.plugin.json` is separate -- it tells the OpenClaw Gateway how to configure camofox as an external service.
+- This is camofox's own config for the in-process plugin system (`plugins/`), unrelated to the standalone MCP adapter in `mcp/`.
 
 ### Installing Plugins
 

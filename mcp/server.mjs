@@ -51,6 +51,32 @@ const USER_ID = process.env.CAMOFOX_USER_ID || `mcp-${randomUUID()}`;
 // sessionKey partitions tabs within a user (matches plugin.ts fallback "default").
 const SESSION_KEY = process.env.CAMOFOX_SESSION_KEY || "default";
 
+// Adapter-LOCAL tools (not REST-proxied). Fleet discovery: read the sanitized
+// registry proxyctl writes on the host (id/port/country/hasProxy/loggedIn/status —
+// no creds). The REST server can't serve this: a container only sees its own
+// profile. To ACT as a profile, point a separate MCP server at it
+// (CAMOFOX_BASE_URL=<baseUrl>, CAMOFOX_USER_ID=<id>).
+const REGISTRY_FILE = process.env.CAMOFOX_REGISTRY_FILE || "/run/camofox-registry.json";
+const LOCAL_TOOLS = [
+  {
+    name: "camofox_list_profiles",
+    description:
+      "List camofox fleet profiles (id, port, country, hasProxy, loggedIn, status) so you can pick one. Each profile is a separate browser with its own proxy/identity and possibly a saved login; reach a specific one via an MCP server configured with CAMOFOX_BASE_URL=<baseUrl> + CAMOFOX_USER_ID=<id>.",
+    inputSchema: { type: "object", properties: {} },
+  },
+];
+
+function handleLocalTool(name) {
+  if (name !== "camofox_list_profiles") return null;
+  try {
+    return { content: [{ type: "text", text: readFileSync(REGISTRY_FILE, "utf8") }] };
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: JSON.stringify({ error: `registry unavailable: ${err.message}`, path: REGISTRY_FILE }) }],
+    };
+  }
+}
+
 // The standalone package declares the SDK directly. Surface a clear,
 // actionable error if an incomplete installation is missing it.
 let Server, StdioServerTransport, CallToolRequestSchema, ListToolsRequestSchema;
@@ -77,15 +103,20 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOL_DEFS.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
-  })),
+  tools: [
+    ...TOOL_DEFS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })),
+    ...LOCAL_TOOLS,
+  ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
+  const local = handleLocalTool(name);
+  if (local) return local;
   const def = TOOL_DEFS.find((t) => t.name === name);
   if (!def) {
     return {

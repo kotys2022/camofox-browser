@@ -170,7 +170,7 @@ claude mcp add camofox-browser -- node /Users/you/src/camofox-browser/mcp/server
 | Cursor | Settings → MCP — server shows green |
 | opencode | `opencode mcp list` |
 
-You should see 12 tools: `camofox_create_tab`, `camofox_snapshot`, `camofox_click`, `camofox_type`, `camofox_navigate`, `camofox_scroll`, `camofox_screenshot`, `camofox_evaluate`, `camofox_list_tabs`, `camofox_close_tab`, `camofox_import_cookies`, `camofox_capture_response`.
+You should see 13 tools: `camofox_create_tab`, `camofox_snapshot`, `camofox_click`, `camofox_type`, `camofox_navigate`, `camofox_scroll`, `camofox_screenshot`, `camofox_evaluate`, `camofox_list_tabs`, `camofox_close_tab`, `camofox_import_cookies`, `camofox_capture_response`, `camofox_list_profiles`.
 
 ## Tools
 
@@ -188,6 +188,7 @@ You should see 12 tools: `camofox_create_tab`, `camofox_snapshot`, `camofox_clic
 | `camofox_close_tab` | Close a tab |
 | `camofox_import_cookies` | Import a Netscape cookie file (needs `CAMOFOX_API_KEY`) |
 | `camofox_capture_response` | Capture the first XHR/fetch response matching a URL pattern (JSON body); more reliable than a hand-written `fetch()` in `camofox_evaluate` |
+| `camofox_list_profiles` | **(fleet)** List the fleet's profiles (id, port, country, hasProxy, loggedIn, status) from the host registry proxyctl writes. Adapter-local — reads `/run/camofox-registry.json`, not the REST server. To *act* as a profile, run a separate MCP server with `CAMOFOX_BASE_URL=<baseUrl>` + `CAMOFOX_USER_ID=<id>`. |
 
 ## Workflow
 

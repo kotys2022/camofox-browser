@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tomllib
 
-IMAGE = os.environ.get("CAMOFOX_IMAGE", "camofox-browser:local")
+IMAGE = os.environ.get("CAMOFOX_IMAGE", "camofox-browser-ai:local")
 DATA_ROOT = os.environ.get("CAMOFOX_DATA_ROOT", "/var/lib/camofox")  # <DATA_ROOT>/<id>:/root/.camofox
 RUN_ENV_DIR = os.environ.get("CAMOFOX_RUN_ENV_DIR", "/run/camofox")  # per-profile secret env-file (0600)
 UNIT_DIR = "/etc/systemd/system"

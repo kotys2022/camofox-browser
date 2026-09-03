@@ -3,9 +3,9 @@
 # skipped/failing on a host without `npm run fetch-bin`). Mirrors Dockerfile.ci's
 # system libs + binary, but keeps devDependencies and copies tests/.
 #
-#   docker build -f Dockerfile.test -t camofox-browser:test .
-#   docker run --rm --shm-size=2g camofox-browser:test            # tests/unit
-#   docker run --rm --shm-size=2g camofox-browser:test <jest args>
+#   docker build -f Dockerfile.test -t camofox-browser-ai:test .
+#   docker run --rm --shm-size=2g camofox-browser-ai:test            # tests/unit
+#   docker run --rm --shm-size=2g camofox-browser-ai:test <jest args>
 FROM node:22-trixie-slim
 
 ARG CAMOUFOX_VERSION=135.0.1

@@ -6,7 +6,7 @@
 (data-екстракція через MCP). Огляд змін форку — розділ **Fork changes** у `README.md`.
 
 > JS-залежності: `npm install --ignore-scripts` (бінарник браузера не тягнеться; за потреби
-> `npm run fetch-bin`). Реальний запуск — через Docker-образ (`make build` → `camofox-browser:local`).
+> `npm run fetch-bin`). Реальний запуск — через Docker-образ (`make build` → `camofox-browser-ai:local`).
 
 ## Образ і як він працює
 - node **v22**, HTTP-сервер camoufox слухає **9377** усередині контейнера.
@@ -19,13 +19,13 @@
 ## Як тестувати
 CI-паритетний прогін усіх сьютів (потребує реального бінарника) — через `Dockerfile.test`:
 ```bash
-docker build -f Dockerfile.test -t camofox-browser:test .
-docker run --rm --shm-size=2g camofox-browser:test tests/unit
+docker build -f Dockerfile.test -t camofox-browser-ai:test .
+docker run --rm --shm-size=2g camofox-browser-ai:test tests/unit
 ```
 Швидкий ручний драйв движка:
 ```bash
 docker run -d --rm --name cfx --shm-size=2g -p 127.0.0.1:9378:9377 \
-  -e CAMOFOX_CRASH_REPORT_ENABLED=false camofox-browser:local
+  -e CAMOFOX_CRASH_REPORT_ENABLED=false camofox-browser-ai:local
 # health: GET :9378/health → {"ok":true,...,"browserConnected","activeTabs"}
 # tab:    POST :9378/tabs {userId,sessionKey,url}
 # eval:   POST :9378/tabs/<tabId>/evaluate {userId,expression}

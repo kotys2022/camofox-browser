@@ -8,13 +8,13 @@
 #   джерело істини — /var/lib/camofox/profiles.toml (рантайм-мутабельний, 0600).
 #   Ребілд НЕ чіпає ні контейнери, ні /var/lib/camofox → дані профілів НЕ перезаписуються.
 #
-#   1 образ camofox-browser:local (спільний) → N контейнерів-профілів, кожен зі
+#   1 образ camofox-browser-ai:local (спільний) → N контейнерів-профілів, кожен зі
 #   своїм volume /var/lib/camofox/<id> (identity+куки) і своїм проксі. Керування —
 #   `proxyctl` (ls/validate/apply/…); опис профілів — profiles.toml. Гайд
 #   (архітектура + операції + розгортання): camofox-manager/USAGE.md.
 #
-#   ⚠ Образ будує deploy.sh (build_camofox_image) із форку kotys2022/camofox-browser
-#     → camofox-browser:local (pull=never).
+#   ⚠ Образ будує deploy.sh (build_camofox_image) із форку kotys2022/camofox-browser-ai
+#     → camofox-browser-ai:local (pull=never).
 #
 # Периметр: 127.0.0.1 + firewall закритий, БЕЗ auth (свідома trust-політика, secrets.nix).
 # MCP-адаптер (hermes.nix) б'є в профіль `default` по loopback :9377.
@@ -52,7 +52,7 @@ in {
     };
     image = lib.mkOption {
       type    = lib.types.str;
-      default = "camofox-browser:local";
+      default = "camofox-browser-ai:local";
       description = "Локальний docker-образ (deploy.sh build із форку). pull=never.";
     };
     stateDir = lib.mkOption {

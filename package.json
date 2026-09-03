@@ -1,18 +1,18 @@
 {
-  "name": "@askjo/camofox-browser",
+  "name": "@askjo/camofox-browser-ai",
   "version": "1.14.0",
   "description": "Headless browser automation server (REST + MCP) for AI agents - anti-detection, element refs, and session isolation",
   "type": "module",
   "main": "server.js",
   "license": "MIT",
   "author": "Jo Inc <oss@askjo.ai>",
-  "homepage": "https://github.com/jo-inc/camofox-browser#readme",
+  "homepage": "https://github.com/kotys2022/camofox-browser-ai#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jo-inc/camofox-browser.git"
+    "url": "git+https://github.com/kotys2022/camofox-browser-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/jo-inc/camofox-browser/issues"
+    "url": "https://github.com/kotys2022/camofox-browser-ai/issues"
   },
   "keywords": [
     "browser",

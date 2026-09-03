@@ -25,10 +25,10 @@ describe('version synchronization', () => {
     await writeFile(join(fixture, 'package.json'), JSON.stringify({ type: 'module', version: '9.8.7' }));
     await writeFile(join(fixture, 'mcp', 'package.json'), JSON.stringify({ version: '1.0.0' }));
     await writeFile(join(fixture, 'mcp', 'package-lock.json'), JSON.stringify({
-      name: '@askjo/camofox-browser-mcp',
+      name: '@askjo/camofox-browser-ai-mcp',
       version: '1.0.0',
       lockfileVersion: 3,
-      packages: { '': { name: '@askjo/camofox-browser-mcp', version: '1.0.0' } },
+      packages: { '': { name: '@askjo/camofox-browser-ai-mcp', version: '1.0.0' } },
     }));
 
     await execFile(process.execPath, [join(fixture, 'scripts', 'sync-version.js')]);

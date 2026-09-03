@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="logo.png" alt="camofox-browser" width="200" />
-  <h1>camofox-browser</h1>
+  <img src="logo.png" alt="camofox-browser-ai" width="200" />
+  <h1>camofox-browser-ai</h1>
   <p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
@@ -18,7 +18,7 @@
 > **Developed and tested on NixOS.** A ready-to-use NixOS module (`nix/camofox-browser.nix`) and a fleet manager (`proxyctl`) ship in this repo — see [NixOS deployment](#nixos-deployment). Docker and plain `npm` work everywhere else.
 
 ```bash
-git clone https://github.com/kotys2022/camofox-browser && cd camofox-browser
+git clone https://github.com/kotys2022/camofox-browser-ai && cd camofox-browser-ai
 npm install && npm start
 # -> http://localhost:9377
 ```
@@ -128,7 +128,7 @@ This fork is developed and tested on **NixOS**. The repo ships:
 services.camofox-docker = {
   enable = true;
   # port         = 9377;                           # host port of the `default` profile (loopback)
-  # image        = "camofox-browser:local";        # local docker image (pull = never)
+  # image        = "camofox-browser-ai:local";        # local docker image (pull = never)
   # stateDir     = "/var/lib/camofox";             # <stateDir>/<id> = profile volume; <stateDir>/profiles.toml
   # profilesFile = "/var/lib/camofox/profiles.toml";
 };
@@ -227,8 +227,8 @@ The Docker image includes yt-dlp. For local dev, install it for the `/youtube/tr
 ### Standalone
 
 ```bash
-git clone https://github.com/kotys2022/camofox-browser
-cd camofox-browser
+git clone https://github.com/kotys2022/camofox-browser-ai
+cd camofox-browser-ai
 npm install
 npm start  # downloads Camoufox on first run (~300MB)
 ```
@@ -630,8 +630,8 @@ npm run test:debug    # with server output
 Suites that spawn the server need the real Camoufox binary and are green in the CI-parity image:
 
 ```bash
-docker build -f Dockerfile.test -t camofox-browser:test .
-docker run --rm --shm-size=2g camofox-browser:test tests/unit
+docker build -f Dockerfile.test -t camofox-browser-ai:test .
+docker run --rm --shm-size=2g camofox-browser-ai:test tests/unit
 ```
 
 ## License

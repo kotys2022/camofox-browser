@@ -309,9 +309,11 @@ export async function register(app, ctx, pluginConfig = {}) {
       // Deep-clone: launchOptions() mutates the config object in place
       // (webgl, canvas:aaOffset, geolocation), which must not leak back to disk.
       launchArgs.fingerprint = structuredClone(identity.fingerprint);
-      // Re-home navigator.language to the current proxy country (opt-in). geoip
-      // already makes tz/geo/webrtc follow the exit IP; this covers the one field
-      // it doesn't. No-op within the same country (locale already matches).
+      // Pin navigator.language to the *declared* proxy country (opt-in). In
+      // Camoufox 135 geoip already derives navigator.language (along with
+      // tz/geo/webrtc) from the exit IP, so this is a no-op within the same
+      // country. It matters as a deterministic pin: re-homing to another
+      // country, or guarding against an exit IP that geolocates to a neighbour.
       if (localeFollowsProxy && launchArgs.proxy) {
         const locale = localeFromCountry(config?.proxy?.country);
         const r = applyLocaleToFingerprint(launchArgs.fingerprint, locale);

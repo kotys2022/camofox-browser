@@ -84,10 +84,11 @@ If `fingerprintFile` is omitted it defaults to `<profileDir>/identity.json`.
   when a **persisted** profile is re-homed to a new country, overwrite only
   `navigator.language` / `navigator.languages` to match the current `PROXY_COUNTRY`
   at each launch, leaving the rest of the fingerprint (and the on-disk file)
-  untouched. `geoip` already makes timezone/geolocation/webrtc follow the exit IP;
-  this covers the one field it doesn't. Off by default — for a stable login
-  identity a changing browser language is itself a soft signal; a no-op within the
-  same country.
+  untouched. In Camoufox 135 `geoip` already derives `navigator.language` (along
+  with timezone/geolocation/webrtc) from the exit IP, so this is a no-op within
+  the same country; use it as a deterministic pin — re-homing to another country,
+  or guarding against an exit IP that geolocates to a neighbour. Off by default —
+  for a stable login identity a changing browser language is itself a soft signal.
 
 ## Rotation
 

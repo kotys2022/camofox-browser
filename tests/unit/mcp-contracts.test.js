@@ -1,12 +1,12 @@
 /**
  * Mock-HTTP contract tests for the shared tool contract module
- * (lib/mcp-tool-contracts.mjs).
+ * (mcp/lib/tool-contracts.mjs).
  *
  * These tests are the "1:1 compatibility is verifiable" guard the reviewer
  * asked for: every tool's REST route, method, body shape, auth header, and
- * response decoding is asserted against a mock REST server. Because plugin.ts
- * (OpenClaw) and mcp/server.mjs both call the same runTool()/adaptResponse(),
- * passing these tests proves both hosts issue identical REST traffic.
+ * response decoding is asserted against a mock REST server. mcp/server.mjs
+ * calls the same runTool()/adaptResponse(), so passing these tests proves the
+ * MCP host issues the expected REST traffic.
  *
  * No network: globalThis.fetch is swapped per-test.
  */
@@ -26,7 +26,7 @@ import {
   runTool,
   adaptResponse,
   authHeaders,
-} from '../../lib/mcp-tool-contracts.mjs';
+} from '../../mcp/lib/tool-contracts.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://localhost:9377';

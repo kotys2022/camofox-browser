@@ -38,7 +38,7 @@ RUN npm ci
 
 # App + tests (selective COPY -- no host node_modules, which would shadow the
 # container's freshly-built native modules).
-COPY server.js camofox.config.json openapi.json openclaw.plugin.json jest.config.cjs jest.config.e2e.cjs ./
+COPY server.js camofox.config.json openapi.json jest.config.cjs jest.config.e2e.cjs ./
 COPY lib/ ./lib/
 COPY mcp/ ./mcp/
 COPY plugins/ ./plugins/

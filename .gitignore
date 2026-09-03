@@ -46,3 +46,6 @@ playwright-report/
 .mcp.json
 .serena/
 .claude/
+
+# live A0 macro-probe harness (Hermes/qwen runs; not part of the engine)
+testCamofox-harness/

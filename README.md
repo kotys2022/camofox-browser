@@ -201,7 +201,7 @@ See [`nix/camofox-manager/USAGE.md`](nix/camofox-manager/USAGE.md) for the full 
 sudo bash camofox-profile.sh    # needs proxyctl on PATH (installed by the module) + sudo
 ```
 
-Menu: **List / Create / Edit / Delete / Health**. Highlights:
+Menu: **List** (profiles, live status, and which have a saved login) **/ Create / Edit / Delete / Health**. Highlights:
 
 - **Guided proxy setup** — direct / single proxy / same-country pool; paste a full `scheme://user:pass@host:port` URL at any prompt; optional `country` and `localeFollowsProxy`.
 - **Port safety** — auto-suggests a free port and rejects one already used by another profile (TOML) or bound on the host (a foreign container/process).
@@ -287,6 +287,8 @@ The standalone MCP adapter lives in [`mcp/`](mcp/) and is built from source. It 
 **Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`  |  `camofox_capture_response`  |  `camofox_list_profiles`  |  `camofox_use_profile`  |  `camofox_current_profile`
 
 The REST server must be running; the MCP server only forwards calls (`CAMOFOX_BASE_URL` points it at the REST server). See [`mcp/README.md`](mcp/README.md) for host wiring.
+
+**Fleet discovery & routing (fork).** With a running fleet (see [NixOS deployment](#nixos-deployment)), one adapter drives every profile — no per-profile MCP server needed. `camofox_list_profiles` lists the fleet (id, port, country, proxy, `loggedIn`, status) from the sanitized registry `proxyctl` writes (`/run/camofox-registry.json`); `camofox_use_profile("<id>")` then switches routing so subsequent tools act as that profile — its proxy, identity, and saved login (keyed by `userId=<id>`); `camofox_current_profile` shows the active routing. Typical flow: `list_profiles` → `use_profile("acct-de")` → navigate/snapshot as that logged-in profile.
 
 ## Usage
 

@@ -529,7 +529,7 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) when available (fast, no browser
 |--------|----------|-------------|
 | `POST` | `/sessions/:userId/cookies` | Add cookies to a user session (Playwright cookie objects) |
 | `GET` | `/sessions/:userId/storage_state` | Export persisted browser storage ([VNC plugin](plugins/vnc/)) |
-| `GET` | `/sessions/:userId/auth` | Sanitized saved-login summary from persisted storage — per-domain presence booleans (query `domains=x.com,twitter.com`, `includeExpired=true`), **no cookie names/values** (fork, [persistence plugin](plugins/persistence/)) |
+| `GET` | `/sessions/:userId/auth` | Sanitized saved-login summary from persisted storage — per-domain presence booleans (query `domains=x.com,twitter.com`, `includeExpired=true`), **no cookie names/values**. Read-only: no `CAMOFOX_API_KEY` needed (subject to `CAMOFOX_ACCESS_KEY` like other reads) (fork, [persistence plugin](plugins/persistence/)) |
 | `DELETE` | `/sessions/:userId/storage_state` | Reset the live session and delete its persisted storage ([persistence plugin](plugins/persistence/)) |
 
 ## Search Macros

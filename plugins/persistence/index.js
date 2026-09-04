@@ -210,7 +210,12 @@ export async function register(app, ctx, pluginConfig = {}) {
   // Sanitized saved-login summary from persisted storage state: per-domain
   // presence booleans only, never cookie names/values. A possession hint (skip
   // the login step), not proof of authorization -- confirm via real interaction.
-  app.get('/sessions/:userId/auth', ctx.auth(), async (req, res) => {
+  //
+  // Read-only + sanitized, so it is NOT behind the CAMOFOX_API_KEY gate (unlike
+  // cookie import / storage reset). It is reachable on loopback without a key and
+  // still falls under CAMOFOX_ACCESS_KEY when that global gate is configured --
+  // same posture as the other read endpoints (e.g. snapshot).
+  app.get('/sessions/:userId/auth', async (req, res) => {
     const userId = ctx.normalizeUserId(req.params.userId);
     try {
       const domainsParam = req.query.domains;

@@ -81,6 +81,7 @@ A full rundown of what the server can do. Items marked **(fork)** are additions 
 ### Sessions, auth & files
 - **Session isolation** — separate cookies/storage per user (`newContext` per userId).
 - **Cookie persistence & import** — persisted `storage_state.json` per profile; inject Netscape-format cookie files for authenticated browsing.
+- **Sanitized saved-login check (fork)** — `GET /sessions/:userId/auth?domains=…` reports whether a user has a saved login for given domains (per-domain booleans, expired cookies skipped), **without exposing cookie names or values** — so an orchestrator can project login-state without reading the engine's storage-state format or handling secrets. A possession hint, not proof of authorization.
 - **File upload** — attach files from a configured directory without a native OS dialog.
 - **VNC interactive login** — log into sites visually via noVNC, then export the storage state for agent reuse.
 
@@ -109,7 +110,7 @@ A full rundown of what the server can do. Items marked **(fork)** are additions 
 This fork keeps upstream's default behavior — every new capability is **opt-in**. Upstream code was left untouched wherever a change could be made through a plugin or a hook; the core was modified minimally (one new pre-hook `browser:launchOptions`, a few optional parameters).
 
 - **Identity plugin (new)** — persist + re-inject the fingerprint on every launch via the new mutating pre-hook `browser:launchOptions`; WebGL pin via `webgl_config`; canvas pin (`canvas:aaOffset`) via a post-resolution `browser:launching` rewrite of the `CAMOU_CONFIG_*` env chunks; a seed filter against the build's `properties.json` schema; proxy-coherent locale via bundled ICU.
-- **MCP tools & REST** — new `camofox_capture_response` (`POST /tabs/:id/capture`); `evaluate` projection/`maxBytes`; a `waitFor` readiness contract on navigate/create-tab; `?screenshot=true` alias.
+- **MCP tools & REST** — new `camofox_capture_response` (`POST /tabs/:id/capture`); `evaluate` projection/`maxBytes`; a `waitFor` readiness contract on navigate/create-tab; `?screenshot=true` alias; sanitized `GET /sessions/:userId/auth` saved-login summary (per-domain presence, no values).
 - **Plugins / config / observability** — unified `ENABLE_<PLUGIN>=1` gate; browser keep-warm (`BROWSER_IDLE_TIMEOUT_MS=0`); configurable `CAMOFOX_DISPLAY_RESOLUTION`; redacted evaluate-expression logging (`CAMOFOX_LOG_TOOL_ARGS`); an ephemeral-traces warning.
 - **Proxy** — single-string `PROXY_URL`; proxy pools (`PROXY_URLS` / `CAMOFOX_PROXY_LIST_FILE`) with per-session rotation; proxy-country-driven locale (`CAMOFOX_LOCALE_FOLLOWS_PROXY`).
 - **Tooling** — `scripts/profile-bundle.mjs` (export/import a profile as a tar with re-keying and geo/IndexedDB warnings); `scripts/verify-identity-e2e.sh` (live identity-stability E2E); `Dockerfile.test` (CI-parity runner with the real binary + xvfb).
@@ -528,6 +529,7 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) when available (fast, no browser
 |--------|----------|-------------|
 | `POST` | `/sessions/:userId/cookies` | Add cookies to a user session (Playwright cookie objects) |
 | `GET` | `/sessions/:userId/storage_state` | Export persisted browser storage ([VNC plugin](plugins/vnc/)) |
+| `GET` | `/sessions/:userId/auth` | Sanitized saved-login summary from persisted storage — per-domain presence booleans (query `domains=x.com,twitter.com`, `includeExpired=true`), **no cookie names/values** (fork, [persistence plugin](plugins/persistence/)) |
 | `DELETE` | `/sessions/:userId/storage_state` | Reset the live session and delete its persisted storage ([persistence plugin](plugins/persistence/)) |
 
 ## Search Macros

@@ -34,6 +34,7 @@ import {
   loadPersistedStorageState,
   persistStorageState,
 } from '../../lib/persistence.js';
+import { summarizeAuthState } from '../../lib/auth-state.js';
 import { importBootstrapCookies } from '../../lib/cookies.js';
 
 async function removeIfExists(p) {
@@ -205,5 +206,29 @@ export async function register(app, ctx, pluginConfig = {}) {
     }
   });
 
-  log('info', 'persistence plugin: registered DELETE /sessions/:userId/storage_state');
+  // GET /sessions/:userId/auth?domains=x.com,twitter.com
+  // Sanitized saved-login summary from persisted storage state: per-domain
+  // presence booleans only, never cookie names/values. A possession hint (skip
+  // the login step), not proof of authorization -- confirm via real interaction.
+  app.get('/sessions/:userId/auth', ctx.auth(), async (req, res) => {
+    const userId = ctx.normalizeUserId(req.params.userId);
+    try {
+      const domainsParam = req.query.domains;
+      const domains =
+        typeof domainsParam === 'string' && domainsParam.length
+          ? domainsParam.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+      const ignoreExpired = req.query.includeExpired !== 'true';
+      const summary = await summarizeAuthState({ profileDir, userId, domains, ignoreExpired });
+      res.json({ userId, ...summary });
+    } catch (err) {
+      log('error', 'auth-state read failed', { reqId: req.reqId, userId, error: err.message });
+      res.status(500).json({ error: ctx.safeError(err) });
+    }
+  });
+
+  log(
+    'info',
+    'persistence plugin: registered DELETE /sessions/:userId/storage_state, GET /sessions/:userId/auth'
+  );
 }

@@ -11,7 +11,7 @@ describe('persistence plugin', () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'camofox-persist-plugin-'));
     events = createPluginEvents();
-    mockApp = { delete: jest.fn() };
+    mockApp = { delete: jest.fn(), get: jest.fn() };
     ctx = {
       events,
       config: { cookiesDir: path.join(tmpDir, 'cookies') },
@@ -256,5 +256,42 @@ describe('persistence plugin', () => {
     expect(mockContext.storageState).toHaveBeenCalledWith(
       expect.objectContaining({ indexedDB: true })
     );
+  });
+
+  test('GET /sessions/:userId/auth returns sanitized per-domain presence', async () => {
+    await register(mockApp, ctx, { profileDir: tmpDir });
+
+    // seed a persisted storage state with a secret cookie value
+    const { getUserPersistencePaths } = await import('../../lib/persistence.js');
+    const { userDir, storageStatePath } = getUserPersistencePaths(tmpDir, 'user-auth');
+    await fs.mkdir(userDir, { recursive: true });
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    await fs.writeFile(
+      storageStatePath,
+      JSON.stringify({
+        cookies: [{ name: 'auth', value: 'TOPSECRET', domain: '.x.com', expires: future }],
+        origins: [],
+      })
+    );
+
+    const call = mockApp.get.mock.calls.find((c) => c[0] === '/sessions/:userId/auth');
+    expect(call).toBeDefined();
+    const handler = call[call.length - 1];
+
+    let body;
+    const res = { json: (b) => { body = b; }, status: () => res };
+    await handler(
+      { params: { userId: 'user-auth' }, query: { domains: 'x.com,twitter.com' } },
+      res
+    );
+
+    expect(body).toMatchObject({
+      userId: 'user-auth',
+      hasStorageState: true,
+      hasSavedLogin: true,
+      domains: { 'x.com': true, 'twitter.com': false },
+    });
+    // sanitized: no cookie value leaks into the response
+    expect(JSON.stringify(body)).not.toMatch(/TOPSECRET/);
   });
 });

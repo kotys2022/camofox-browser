@@ -34,6 +34,7 @@ append_block() { { read_file; printf '%s' "$1"; } | write_file; }
 
 confirm()   { local a; read -rp "${1:-Continue?} [y/N] " a; [[ "$a" =~ ^[Yy]$ ]]; }
 list_ids()  { read_file | grep -oE '^\[profiles\.[^]]+\]' | sed -E 's/\[profiles\.(.+)\]/\1/'; }
+has_login() { $SUDO bash -c "ls '$STATE_DIR/$1'/profiles/*/storage-state.json" >/dev/null 2>&1; }  # чи є захоплений логін у volume
 next_port() { local mx; mx="$(read_file | grep -oE '^[[:space:]]*port[[:space:]]*=[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)"; echo "$(( ${mx:-9400} + 1 ))"; }
 
 read_profile() {   # id → "kind|country|port|proxy"  (префіл для Edit; лише читання)
@@ -269,13 +270,23 @@ do_capture() {     # [id] — з Create/Edit передається; без ар
   echo ">>> Готово. Майбутні сесії з userId='$uid' відновлять цей логін (persistence у $STATE_DIR/$id)."
 }
 
+do_list() {        # proxyctl ls (live status) + logged-in позначка з volume
+  pc ls
+  echo "  logged-in (є збережений storage-state):"
+  local any=0 id
+  while IFS= read -r id; do
+    has_login "$id" && { echo "    ✓ $id"; any=1; }
+  done < <(list_ids)
+  [ "$any" = 0 ] && echo "    (жодного)"
+}
+
 menu() {
   while true; do
     echo; echo "=== camofox-profile ($FILE) ==="
     echo " 1) List   2) Create   3) Edit   4) Delete   5) Health   q) Quit"
     local x; read -rp "> " x
     case "$x" in
-      1) pc ls;; 2) do_create;; 3) do_edit;; 4) do_delete;; 5) pc health;;
+      1) do_list;; 2) do_create;; 3) do_edit;; 4) do_delete;; 5) pc health;;
       q|Q) break;; *) echo "?";;
     esac
   done

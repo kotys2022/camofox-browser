@@ -195,7 +195,7 @@ See [`nix/camofox-manager/USAGE.md`](nix/camofox-manager/USAGE.md) for the full 
 
 ### Interactive profile menu (`camofox-profile.sh`)
 
-[`camofox-profile.sh`](camofox-profile.sh) (repo root) is a **thin interactive wrapper over `proxyctl`** for operators who prefer a menu to hand-editing TOML. It only collects answers and generates/removes the `[profiles.<id>]` block — all TOML validation, `apply`, and container reconciliation are delegated to `proxyctl` (it never parses TOML for writing).
+[`camofox-profile.sh`](camofox-profile.sh) (repo root) is a **thin interactive wrapper over `proxyctl`** for operators who prefer a menu to hand-editing TOML. It only collects answers and generates/removes the `[profiles.<id>]` block — all TOML validation, `apply`, and container reconciliation are delegated to `proxyctl` (it never parses TOML for writing). Bilingual **EN/UA** — pick the language at startup, or set `CAMOFOX_PROFILE_LANG=en|ua`.
 
 ```bash
 sudo bash camofox-profile.sh    # needs proxyctl on PATH (installed by the module) + sudo

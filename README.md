@@ -193,12 +193,15 @@ See [`nix/camofox-manager/USAGE.md`](nix/camofox-manager/USAGE.md) for the full 
 
 > **Secrets stay out of git.** Only [`profiles.example.toml`](nix/camofox-manager/profiles.example.toml) (placeholders) is committed. The real `profiles.toml` and every profile's identity/cookies live in `/var/lib/camofox`, outside the repo.
 
-### Interactive profile menu (`camofox-profile.sh`)
+### Interactive profile menu (`camofox-profile`)
 
 [`camofox-profile.sh`](camofox-profile.sh) (repo root) is a **thin interactive wrapper over `proxyctl`** for operators who prefer a menu to hand-editing TOML. It only collects answers and generates/removes the `[profiles.<id>]` block — all TOML validation, `apply`, and container reconciliation are delegated to `proxyctl` (it never parses TOML for writing). Bilingual **EN/UA** — pick the language at startup, or set `CAMOFOX_PROFILE_LANG=en|ua`.
 
+The Nix module packages it as the system command **`camofox-profile`** (on `PATH`, with `proxyctl`/`docker`/`curl`/`python3`/`openssl`/`ss` wired in); run it directly. From a checkout you can also invoke the script itself:
+
 ```bash
-sudo bash camofox-profile.sh    # needs proxyctl on PATH (installed by the module) + sudo
+camofox-profile                 # system command (installed by the module)
+sudo bash camofox-profile.sh    # or straight from the repo — needs proxyctl on PATH + sudo
 ```
 
 Menu: **List** (profiles, live status, and which have a saved login) **/ Create / Edit / Delete / Health**. Highlights:

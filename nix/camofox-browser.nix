@@ -20,7 +20,7 @@
 # MCP-адаптер (hermes.nix) б'є в профіль `default` по loopback :9377.
 # Вмикається: services.camofox-docker.enable.
 # =============================================================================
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, inputs, ... }:
 let
   cfg = config.services.camofox-docker;
   dockerBin = config.virtualisation.docker.package;
@@ -41,6 +41,21 @@ let
         --prefix PATH : ${lib.makeBinPath [ dockerBin pkgs.curl ]}
       runHook postInstall
     '';
+  };
+
+  # camofox-profile: інтерактивне двомовне (EN/UA) меню керування профілями.
+  # Тонка обгортка над `proxyctl`; сам скрипт живе в корені форку (flake-input —
+  # той самий source-of-truth, що й MCP-адаптер у hermes.nix). Рантайм-депенденсі
+  # (proxyctl/docker/curl/python3/openssl/ss/…) — у PATH; sudo береться з
+  # /run/wrappers (writeShellApplication лише ПРЕФІКСує PATH, не скидає його).
+  camofoxProfile = pkgs.writeShellApplication {
+    name = "camofox-profile";
+    runtimeInputs = [
+      cfg.package dockerBin
+      pkgs.curl pkgs.python3 pkgs.openssl pkgs.iproute2
+      pkgs.gnugrep pkgs.gnused pkgs.coreutils pkgs.util-linux
+    ];
+    text = ''exec bash ${inputs.camofox-browser}/camofox-profile.sh "$@"'';
   };
 in {
   options.services.camofox-docker = {
@@ -74,7 +89,7 @@ in {
 
   config = lib.mkIf cfg.enable {
     virtualisation.docker.enable = lib.mkDefault true;
-    environment.systemPackages = [ cfg.package ];
+    environment.systemPackages = [ cfg.package camofoxProfile ];
     # Зручні аліаси оператора (працюють у fish/bash, бо programs.fish.enable=true).
     # sudo вже ВСЕРЕДИНІ → пиши `pcx ls`, а не `sudo pcx`.
     environment.shellAliases =

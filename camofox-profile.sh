@@ -66,6 +66,14 @@ set_lang() {
       M[login_url]='URL логіну (напр. https://accounts.google.com): '
       M[empty_url]='порожній URL'
       M[no_port]='нема порту'
+      M[proxy_check]='  перевіряю проксі профілю… '
+      M[proxy_ok]='✓ проксі відповідає (HTTP 200)'
+      M[proxy_skip]='(curl недоступний — пропускаю перевірку проксі)'
+      M[proxy_dead_auth]='✗ проксі відхилив автентифікацію (HTTP 407) — креди биті/протерміновані.
+     Браузер НЕ підніметься (geoip не дістане exit-IP). Полагодь проксі (3→мережа) або логінься direct.'
+      M[proxy_dead]='✗ проксі не робочий (HTTP %s) — браузер не підніметься (geoip не дістане exit-IP).
+     Полагодь проксі (3→мережа) або переведи профіль на direct.'
+      M[proxy_dead_cont]='Усе одно продовжити?'
       M[cap_warn1]="УВАГА: тимчасово ЗУПИНИТЬ контейнер '%s' (спільний volume); capture-контейнер"
       M[cap_warn2]='       іде з --network host; noVNC — лише loopback (127.0.0.1), без пароля.'
       M[cap_continue]='Продовжити?'
@@ -139,6 +147,14 @@ set_lang() {
       M[login_url]='login URL (e.g. https://accounts.google.com): '
       M[empty_url]='empty URL'
       M[no_port]='no port'
+      M[proxy_check]='  checking profile proxy… '
+      M[proxy_ok]='✓ proxy responds (HTTP 200)'
+      M[proxy_skip]='(curl unavailable — skipping proxy check)'
+      M[proxy_dead_auth]='✗ proxy rejected auth (HTTP 407) — credentials bad/expired.
+     Browser will NOT start (geoip cannot get the exit-IP). Fix the proxy (3→network) or log in direct.'
+      M[proxy_dead]='✗ proxy not working (HTTP %s) — browser will NOT start (geoip cannot get the exit-IP).
+     Fix the proxy (3→network) or switch the profile to direct.'
+      M[proxy_dead_cont]='Continue anyway?'
       M[cap_warn1]="NOTE: temporarily STOPS the '%s' container (shared volume); the capture"
       M[cap_warn2]='      container runs with --network host; noVNC on loopback (127.0.0.1) only, no password.'
       M[cap_continue]='Continue?'
@@ -195,6 +211,15 @@ read_profile() {   # id → "kind|country|port|proxy"  (префіл для Edit
   read_file | python3 -c 'import tomllib,sys
 p=tomllib.load(sys.stdin.buffer).get("profiles",{}).get(sys.argv[1],{})
 print(p.get("kind",""),p.get("country",""),p.get("port",""),p.get("proxy",""),sep="|")' "$1"
+}
+
+proxy_http_status() {   # proxy_url → HTTP-код echo-запиту через проксі (000 = reset/timeout/конект)
+  local px="$1" code                                # той самий geoip-шлях, що й у camoufox
+  [ -z "$px" ] && { echo none; return; }
+  command -v curl >/dev/null 2>&1 || { echo skip; return; }
+  code="$(curl -s -o /dev/null -w '%{http_code}' -x "$px" \
+    --max-time "${CAMOFOX_PROXY_CHECK_TIMEOUT:-12}" https://api.ipify.org 2>/dev/null)"
+  echo "${code:-000}"
 }
 
 port_owner() {     # port [exclude_id] → друкує id профілю, що займає цей порт (крім exclude)
@@ -364,6 +389,18 @@ do_capture() {     # [id] — з Create/Edit; без арг → інтеракт
   local url; read -rp "$(pr login_url)" url
   [ -z "$url" ] && { p empty_url; return; }
   local cport; cport="$(read_profile "$id" | cut -d'|' -f3)"; [ -z "$cport" ] && { p no_port; return; }
+  # proxy-preflight: якщо профіль має проксі — перевіряємо, що він автентифікується. Інакше
+  # camoufox не підніме браузер (geoip не дістане exit-IP), а видно лише 10 марних спроб.
+  local cproxy; cproxy="$(read_profile "$id" | cut -d'|' -f4)"
+  if [ -n "$cproxy" ]; then
+    pr proxy_check; local pcode; pcode="$(proxy_http_status "$cproxy")"
+    case "$pcode" in
+      200)   p proxy_ok;;
+      skip)  p proxy_skip;;
+      407)   p proxy_dead_auth; confirm "$(pr proxy_dead_cont)" || return;;
+      *)     p proxy_dead "$pcode"; confirm "$(pr proxy_dead_cont)" || return;;
+    esac
+  fi
   local nv=6080; while [ -n "$(host_owner "$nv")" ]; do nv=$((nv+1)); done
   local vp=5900; while [ -n "$(host_owner "$vp")" ]; do vp=$((vp+1)); done
   p cap_warn1 "$id"; p cap_warn2

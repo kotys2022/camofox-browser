@@ -32,6 +32,8 @@ set_lang() {
       M[which_edit]='який редагувати: '
       M[which_delete]='який видалити: '
       M[current]='поточне: kind=%s country=%s port=%s proxy=%s'
+      M[edit_what_menu]='  що редагувати: 1) мережа (проксі/порт)   2) куки (VNC-логін)'
+      M[edit_what_choice]='  вибір [1]: '
       M[block_hdr]='---- блок ----'
       M[block_sep]='--------------'
       M[newblock_hdr]='---- новий блок (профіль перегенеровується) ----'
@@ -40,6 +42,7 @@ set_lang() {
       M[port_num]='  ! порт має бути числом'
       M[port_intoml]="  ! порт %s уже в profiles.toml (профіль '%s') — введи інший"
       M[port_host]='  ! порт %s зайнятий на хості (%s) — docker не зможе прив’язати; введи інший'
+      M[port_kick]='  ! %s — осиротілий VNC-контейнер цього скрипта. Прибрати й звільнити порт?'
       M[proxy_menu]='  Проксі: 1) без проксі (direct)   2) один проксі   3) пул (одна країна)'
       M[proxy_choice]='  вибір [1] (або встав proxy URL): '
       M[proxy_url]='  proxy URL (scheme://user:pass@host:port): '
@@ -102,6 +105,8 @@ set_lang() {
       M[which_edit]='which to edit: '
       M[which_delete]='which to delete: '
       M[current]='current: kind=%s country=%s port=%s proxy=%s'
+      M[edit_what_menu]='  what to edit: 1) network (proxy/port)   2) cookies (VNC login)'
+      M[edit_what_choice]='  choice [1]: '
       M[block_hdr]='---- block ----'
       M[block_sep]='--------------'
       M[newblock_hdr]='---- new block (profile regenerated) ----'
@@ -110,6 +115,7 @@ set_lang() {
       M[port_num]='  ! port must be a number'
       M[port_intoml]="  ! port %s already in profiles.toml (profile '%s') — pick another"
       M[port_host]='  ! port %s is taken on the host (%s) — docker cannot bind; pick another'
+      M[port_kick]='  ! %s is an orphaned VNC container from this script. Remove it and free the port?'
       M[proxy_menu]='  Proxy: 1) none (direct)   2) single proxy   3) pool (one country)'
       M[proxy_choice]='  choice [1] (or paste a proxy URL): '
       M[proxy_url]='  proxy URL (scheme://user:pass@host:port): '
@@ -166,8 +172,8 @@ set_lang() {
 set_lang en   # дефолт (для `source` у тестах); інтерактивний вибір — у guard внизу
 
 # друк шаблону: p key [args…] → рядок+\n ; pr key [args…] → без \n (для read/printf \r)
-p()  { local k="$1"; shift; printf "${M[$k]}\n" "$@"; }
-pr() { local k="$1"; shift; printf "${M[$k]}" "$@"; }
+p()  { local k="$1"; shift; printf -- "${M[$k]}\n" "$@"; }
+pr() { local k="$1"; shift; printf -- "${M[$k]}" "$@"; }
 
 # ── низькорівневі помічники (усе, що торкає 0600-файл — через $SUDO) ──────────
 pc()         { $SUDO $PROXYCTL -f "$FILE" "$@"; }
@@ -200,21 +206,34 @@ for k,v in d.items():
 }
 
 host_owner() {     # port → "container:<name>" / "host-process" / порожньо
-  local c
+  local c n
   c="$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | awk -v p=":$1->" 'index($0,p){print $1; exit}')"
   [ -n "$c" ] && { echo "container:$c"; return; }
+  # host-network контейнери не показують .Ports у `docker ps` → зіставляємо порт з їх env
+  # (CAMOFOX_PORT/NOVNC_PORT/VNC_PORT). Так осиротілий capture-контейнер видно як container:, а не host-process.
+  for n in $(docker ps --filter network=host --filter name=camofox- --format '{{.Names}}' 2>/dev/null); do
+    docker inspect "$n" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+      | grep -qE "^(CAMOFOX_PORT|NOVNC_PORT|VNC_PORT)=$1\$" && { echo "container:$n"; return; }
+  done
   command -v ss >/dev/null 2>&1 && ss -ltnH "sport = :$1" 2>/dev/null | grep -q . && echo "host-process"
 }
 
 ask_port() {       # default [exclude_id] → ставить глобальну PORT з reprompt при колізії
-  local def="$1" excl="${2:-}" p ow ho
+  local def="$1" excl="${2:-}" p ow ho vc
   while true; do
     read -rp "$(pr port_prompt "$def")" p; PORT="${p:-$def}"
     if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then p port_num; continue; fi
     ow="$(port_owner "$PORT" "$excl")"
     if [ -n "$ow" ]; then p port_intoml "$PORT" "$ow"; continue; fi
     ho="$(host_owner "$PORT")"
-    if [ -n "$ho" ] && [ "$ho" != "container:camofox-$excl" ]; then p port_host "$PORT" "$ho"; continue; fi
+    if [ -n "$ho" ] && [ "$ho" != "container:camofox-$excl" ]; then
+      vc="${ho#container:}"
+      # осиротілий capture-контейнер цього ж скрипта — можна безпечно прибрати й звільнити порт
+      if [[ "$vc" == camofox-*-vnc ]] && confirm "$(pr port_kick "$vc")"; then
+        $SUDO docker rm -f "$vc" >/dev/null 2>&1 || true; continue   # apply наприкінці підніме профіль
+      fi
+      p port_host "$PORT" "$ho"; continue
+    fi
     break
   done
 }
@@ -301,6 +320,10 @@ do_edit() {
   list_ids | grep -qx "$id" || { p no_such; return; }
   local ckind ccc cport cproxy; IFS='|' read -r ckind ccc cport cproxy <<<"$(read_profile "$id")"
   p current "$ckind" "${ccc:-–}" "$cport" "${cproxy:+<set>}"
+  local what; p edit_what_menu; read -rp "$(pr edit_what_choice)" what
+  case "${what:-1}" in
+    2) do_capture "$id"; return;;   # куки: одразу VNC-логін, toml не чіпаємо
+  esac
   ask_port "$cport" "$id"
   ask_proxy
   local blk; blk="$(gen_block "$id" "$KIND" "$CC" "$PORT" "$PROXY" "$PF" "$LOCALE")"
@@ -351,6 +374,17 @@ do_capture() {     # [id] — з Create/Edit; без арг → інтеракт
   inline="$(profile_inline_env "$id")"
   $SUDO test -e "$envfile" && efarg="--env-file $envfile"
 
+  # Прибрати vnc-контейнер і підняти назад нормальний профіль. Ідемпотентно й через trap —
+  # інакше Ctrl+C посеред логіну лишав би сироту на --network host, що тримає порт профілю.
+  local _restored=0
+  _restore() {
+    [ "$_restored" = 1 ] && return; _restored=1; trap - INT TERM
+    p cap_cleanup "$vname"; $SUDO docker rm -f "$vname" >/dev/null 2>&1 || true
+    # rm -f перед apply: proxyctl бачить зупинений контейнер як "keep" і не перезапускає.
+    p cap_restore; $SUDO docker rm -f "camofox-$id" >/dev/null 2>&1 || true; pc apply --apply
+  }
+  trap '_restore; exit 130' INT TERM
+
   p cap_stop "$id"; $SUDO docker stop "camofox-$id" >/dev/null 2>&1 || true
   p cap_start "$vname" "$cport" "$nv" "$vp"
   # --network host: інакше docker-publish приходить не як loopback → noVNC недосяжний
@@ -360,7 +394,7 @@ do_capture() {     # [id] — з Create/Edit; без арг → інтеракт
     -e CAMOFOX_PORT="$cport" -e NOVNC_PORT="$nv" -e VNC_PORT="$vp" -e CAMOFOX_API_KEY="$key" \
     -e BROWSER_IDLE_TIMEOUT_MS=0 \
     $efarg $inline -e ENABLE_VNC=1 \
-    "$IMAGE" >/dev/null || { p cap_runfail; return 1; }
+    "$IMAGE" >/dev/null || { p cap_runfail; _restore; return 1; }
 
   p cap_wait_engine; curl -s --retry 60 --retry-delay 1 --retry-connrefused --max-time 120 "http://$BIND:$cport/health" >/dev/null || p cap_health_no "$vname"
 
@@ -401,9 +435,7 @@ do_capture() {     # [id] — з Create/Edit; без арг → інтеракт
   p cap_captured "$nc"
   rm -f "$tmpout"
 
-  p cap_cleanup "$vname"; $SUDO docker rm -f "$vname" >/dev/null 2>&1 || true
-  # rm -f перед apply: proxyctl бачить зупинений контейнер як "keep" і не перезапускає.
-  p cap_restore; $SUDO docker rm -f "camofox-$id" >/dev/null 2>&1 || true; pc apply --apply
+  _restore
   p cap_done "$uid" "$STATE_DIR/$id"
 }
 
